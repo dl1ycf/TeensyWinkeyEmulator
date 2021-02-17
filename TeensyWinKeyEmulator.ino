@@ -100,8 +100,8 @@
 #define CWOUT               9      // CW keying output (active high)
 #define PTTOUT              13     // PTT output (active high) (and built-in LED)
 
-#define POTPIN              A5     // analog input pin for the Speed pot, do not define if not connected
-#define VOLPIN              A4     // analog input pin for the volume pot, do not define if not connected
+#define POTPIN              A0     // analog input pin for the Speed pot, do not define if not connected
+#define VOLPIN              A1     // analog input pin for the volume pot, do not define if not connected
 
 #define RSPIN               3      // LCD display RS
 #define ENPIN               4      // LCD display EN
@@ -324,7 +324,7 @@ const int rs = RSPIN, en=ENPIN, d4=D4PIN, d5=D5PIN, d6=D6PIN, d7=D7PIN;
 LiquidCrystal lcd(rs, en, d4, d5, d6, d7);
 #endif
 
-#include "TeensyUSBAudioMIDI.h"
+#include "src/TeensyUSBAudioMIDI.h"
 
 TeensyUSBAudioMidi teensyusbaudiomidi;
 
@@ -1312,8 +1312,8 @@ void WinKey_state_machine() {
 void loop() {
   int i;
   static uint8_t LoopCounter=0;
-  static int A5value=0;   // current value of the speed pot
-  static int A4value=0;   // current value of the volume pot
+  static int SpeedPinValue=0;   // current value of the speed pot
+  static int VolPinValue=0;   // current value of the volume pot
   
   //
   //
@@ -1379,34 +1379,45 @@ void loop() {
 //
 // Distribute the remaining work across different executions of loop()
 //
-  switch (LoopCounter) {
+  switch (LoopCounter++) {
     case 0:
 #ifdef POTPIN
       //
       // read speed pot. Do not act if change is minimal
       // since analog reads cost something
+      // Since I experienced instabilities for small valuies,
+      // we only use the range 200 - 1000 and re-map this to
+      // 0-1000
       //
       i=analogRead(POTPIN); // 0 - 1023
-      if (i > A5value + 20 || i < A5value - 20) {
-        A5value=i;
-        SpeedPot=(i*WPMrange)/1023;
+      if (i < 200) i=200;
+      if (i > 1000) i=1000;
+      i = (10*i - 2000)/8;
+      if (i > SpeedPinValue + 50 || i < SpeedPinValue - 50) {
+        SpeedPinValue=i;
+        SpeedPot=(i*WPMrange)/1000;
       }
 #endif      
-      LoopCounter=1;
       break;
     case 2:
 #ifdef VOLPIN   
       //
       // read volume pot. Do not act if change is minimal
-      // since analog reads cost something
+      // since analog reads cost something.
+      // Since I experienced instabilities for small valuies,
+      // we only use the range 200 - 1000 and re-map this to
+      // 0-1000
       //
       i=analogRead(VOLPIN); // 0 - 1023
-      if (i > A4value + 50 || i < A4value - 50) {
-        A4value=i;
-        teensyusbaudiomidi.sidetonevolume(A4value);
+      if (i < 200) i=200;
+      if (i > 1000) i=1000;
+      i = (10*i -2000)/8;
+      if (i > VolPinValue + 50 || i < VolPinValue - 50) {
+        VolPinValue=i;
+        // Convert to level, 0-20
+        teensyusbaudiomidi.sidetonevolume((VolPinValue+25)/50);
       }
 #endif      
-      LoopCounter=3;
       break;
    case 4:
       //
@@ -1416,7 +1427,6 @@ void loop() {
 #ifdef POTPIN      
       if (Speed == 0) myspeed=MinWPM+SpeedPot;
 #endif      
-      LoopCounter=5;
       break;
     case 6:
       //
@@ -1425,14 +1435,12 @@ void loop() {
 #ifdef LCDDISPLAY
       LCD_state_machine();
 #endif
-      LoopCounter=7;  
       break;
     case 8:
       //
       // One heart-beat of WinKey state machine
       //
       WinKey_state_machine();
-      LoopCounter=9;
       break;
     case 10:
       //
@@ -1450,12 +1458,10 @@ void loop() {
       // execute the keyer state machine every second loop
       //
       if (!tuning) keyer_state_machine();
-      LoopCounter++;
-      if (LoopCounter > 11) LoopCounter=0;
       break;      
     default:
       //
-      // we should not arrive here
+      // here we arrive when one cycle is complete
       //
       LoopCounter=0;
   }
