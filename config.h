@@ -10,22 +10,20 @@
 #define OPTION_SIDETONE__VOLUME    0.2  // initial side tone volume
 #define OPTION_SIDETONE_FREQ       800  // initial side tone frequency
 
+#define FEATURE_STRAIGHT_KEY            // define to have straight key support connected to an additional jack
+//#define FEATURE_LCDDISPLAY            // define to support a small 2*16 char LCD display
+
 //
 // Notes:
 // ======
 //
-// If MIDI_CW_CHANNEL      is not defined, channel 1 will be used
-// If MIDI_CW_NOTE         is not defined, Note #1 is used for MIDI CW-key messages
-// If MIDI_PTT_NOTE        is not defined, PTT    MIDI messages are not sent
-// If MIDI_CONTROL_CHANNEL is not defined, channel 2 will be used
-// If AUDIO_MQS            is not defined the I2S audio device will be used
-// If SIDETONE_VOLUME      is not defined 0.2 will be used
-// If SIDETONE_FREQ        is not defined 600 Hz will be used
+// If OPTION_MIDI_CW_CHANNEL      is not defined, channel 1 will be used
+// If OPTION_MIDI_CW_NOTE         is not defined, Note #1 is used for MIDI CW-key messages
+// If OPTION_MIDI_PTT_NOTE        is not defined, PTT MIDI messages are not sent
+// If OPTION_MIDI_CONTROL_CHANNEL is not defined, channel 2 will be used
+// If OPTION_AUDIO_MQS            is not defined the I2S audio device will be used
+// If OPTION_SIDETONE_VOLUME      is not defined 0.2 will be used
+// If OPTION_SIDETONE_FREQ        is not defined 600 Hz will be used
 //
-//
-// So if nothing is defined in this file:
-// - I2S audio is used
-// - incoming MIDI messages are expected on channel 2
-// - CW key-down/up events are sent on channel 1 with Note #1
-// - no PTT events are sent via MIDI
+// Features not defined will not be compiled.
 //
