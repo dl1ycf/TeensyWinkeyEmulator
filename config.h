@@ -2,13 +2,13 @@
 // User-specific configuration goes here
 //
 //
-#define MIDI_CW_CHANNEL      5   // channel for sending key-down and ptt messages
-#define MIDI_CW_NOTE         1   // Note for key-up/down
-#define MIDI_PTT_NOTE        2   // Note for PTT on/off
-#define MIDI_CONTROL_CHANNEL 2   // channel for receiving parameters
-#define AUDIO_MQS                // define if using MQS audio out instead of I2S
-#define SIDETONE__VOLUME    0.2  // initial side tone volume
-#define SIDETONE_FREQ       800  // initial side tone frequency
+#define OPTION_MIDI_CW_CHANNEL      5   // channel for sending key-down and ptt messages
+#define OPTION_MIDI_CW_NOTE         1   // Note for key-up/down
+#define OPTION_MIDI_PTT_NOTE        2   // Note for PTT on/off
+#define OPTION_MIDI_CONTROL_CHANNEL 2   // channel for receiving parameters
+#define OPTION_AUDIO_MQS                // define if using MQS audio out instead of I2S
+#define OPTION_SIDETONE__VOLUME    0.2  // initial side tone volume
+#define OPTION_SIDETONE_FREQ       800  // initial side tone frequency
 
 //
 // Notes:
