@@ -29,9 +29,9 @@ void TeensyUSBAudioMidi::setup(void)
     AudioMemory(16);
     AudioNoInterrupts();
 
-    sine.frequency(SIDETONE_FREQ);
-    sine.amplitude(SIDETONE_VOLUME);
-#ifndef AUDIO_MQS    
+    sine.frequency(OPTION_SIDETONE_FREQ);
+    sine.amplitude(OPTION_SIDETONE_VOLUME);
+#ifndef OPTION_AUDIO_MQS    
     sgtl5000.enable();
     sgtl5000.volume(0.8);
 #endif    
@@ -52,7 +52,7 @@ void TeensyUSBAudioMidi::loop(void)
     // sent on the "wrong" channel.
     //
     while (usbMIDI.read()) {
-        if (usbMIDI.getType() == usbMIDI.ControlChange && usbMIDI.getChannel() == MIDI_CONTROL_CHANNEL) {
+        if (usbMIDI.getType() == usbMIDI.ControlChange && usbMIDI.getChannel() == OPTION_MIDI_CONTROL_CHANNEL) {
             cmd  = usbMIDI.getData1();
             data = usbMIDI.getData2();
 
@@ -93,7 +93,7 @@ void TeensyUSBAudioMidi::loop(void)
                 case 16 :
                     // Set audio output  volume, multi transfer
                     lsb_data = (data << 7) | lsb_data;
-#ifndef AUDIO_MQS                    
+#ifndef OPTION_AUDIO_MQS                    
                     sgtl5000.volume(float(lsb_data)/16384.0);
 #endif                    
                     break;
@@ -110,24 +110,22 @@ void TeensyUSBAudioMidi::loop(void)
 void TeensyUSBAudioMidi::key(int state)
 {
     teensyaudiotone.setTone(state);
-#if defined(MIDI_CW_NOTE) && defined(MIDI_CW_CHANNEL)
     if (state) {
-        usbMIDI.sendNoteOn(MIDI_CW_NOTE, 99, MIDI_CW_CHANNEL);
+        usbMIDI.sendNoteOn(OPTION_MIDI_CW_NOTE, 99, OPTION_MIDI_CW_CHANNEL);
     } else {
-        usbMIDI.sendNoteOff(MIDI_CW_NOTE, 0, MIDI_CW_CHANNEL);
+        usbMIDI.sendNoteOff(OPTION_MIDI_CW_NOTE, 0, OPTION_MIDI_CW_CHANNEL);
     }
     // These messages are time-critical so flush buffer
     usbMIDI.send_now();
-#endif
 }
 
 void TeensyUSBAudioMidi::ptt(int state)
 {
-#if defined(MIDI_PTT_NOTE) && defined(MIDI_CW_CHANNEL)
+#ifdef OPTION_MIDI_PTT_NOTE
     if (state) {
-        usbMIDI.sendNoteOn(MIDI_PTT_NOTE, 127, MIDI_CW_CHANNEL);
+        usbMIDI.sendNoteOn(OPTION_MIDI_PTT_NOTE, 127, OPTION_MIDI_CW_CHANNEL);
     } else {
-        usbMIDI.sendNoteOff(MIDI_PTT_NOTE, 0, MIDI_CW_CHANNEL);
+        usbMIDI.sendNoteOff(OPTION_MIDI_PTT_NOTE, 0, OPTION_MIDI_CW_CHANNEL);
     }
     // These messages are time-critical so flush buffer
     usbMIDI.send_now();
