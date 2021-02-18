@@ -6,7 +6,6 @@
 //
 // Designed for the Teensy 4, using the "Serial+MIDI+Audio" programming model
 //
-// Using MQS sound output at pin 12 for the side tone
 //
 // So far tests with applications on my Macintosh:
 //
@@ -21,7 +20,7 @@
 //   LCD Display
 //   ===========
 //
-// - If compiled with LCDDISPLAY #defined, it drives a 2*16 LCD display.
+// - If compiled with the FEATURE_LCDDISPLAY feature, it drives a 2*16 LCD display.
 //   The first line contains
 //   the characters just sent (both from Paddle or from serial line), and
 //   the second line contains status info (speed and side tone frequency).
@@ -34,13 +33,9 @@
 //   Straight key connection
 //   =======================
 //
-// - If compiled with STRAIGHT #defined, a straight key can be connected
+// - If compiled with the STRAIGHT_KEY feature, a straight key can be connected
 //   (the key should connect this input with ground). Straight key takes 
 //   precedence over the paddle.
-//
-//   The input and output pins for Paddle, Straight-Key, CW, PTT, the
-//   side tone and digital outputs controlling the LCD are #defined
-//   below.
 //
 //   High-quality side tone
 //   ======================
@@ -75,63 +70,6 @@
 //   panel.
 //
 //
-
-//
-// COMPILE-TIME CONFIGURABLE OPTIONS
-//
-
-//#define LCDDISPLAY        //define LCDDISPLAY if you attach an LCD display
-#define STRAIGHT 1        //define STRAIGHT if you want to support an additional straight key connected
-//
-// END OF COMPILE-TIME CONFIGURABLE OPTIONS
-//
-
-//
-// Hardware lines.
-// For simple Arduinos, you cannot use 0 and 1 (hardware serial line),
-// and you can only use 2 and 3 for Paddle (since they should trigger interrupts)
-//
-
-#define PaddleRight         0      // input for right paddle
-#define PaddleLeft          1      // input for left paddle
-#define StraightKey         2      // input for straight key
-
-#define TonePin             12     // digital output pin for square wave side tone or MQS
-#define CWOUT               9      // CW keying output (active high)
-#define PTTOUT              13     // PTT output (active high) (and built-in LED)
-
-#define POTPIN              A0     // analog input pin for the Speed pot, do not define if not connected
-#define VOLPIN              A1     // analog input pin for the volume pot, do not define if not connected
-
-#define RSPIN               3      // LCD display RS
-#define ENPIN               4      // LCD display EN
-#define D4PIN               5      // LCD display D4
-#define D5PIN               6      // LCD display D5
-#define D6PIN               7      // LCD display D6
-#define D7PIN               8      // LCD display D7
-
-
-////////////////////////////////////////////////////////////////////////////////////////
-//
-// PC1602F and other displays: used pins (I put the info here so I do not loose it)
-//
-//  1: Gnd
-//  2: +5V
-//  3: to center pin of 10k pot connected to GND and +5V (Display contrast)
-//  4: RSPIN
-//  5: Gnd
-//  6: ENPIN
-//  7: n.c.
-//  8: n.c.
-//  9: n.c.
-// 10: n.c.
-// 11: D4PIN
-// 12: D5PIN
-// 13: D6PIN
-// 14: D7PIH
-// 15: to +5V via 220 Ohm resistor (Backlight supply)
-// 16: GND
-//
 ////////////////////////////////////////////////////////////////////////////////////////
 //
 //
@@ -152,6 +90,12 @@
 //   of loop()
 //
 ////////////////////////////////////////////////////////////////////////////////////////
+
+#include "config.h"                 // read in OPTIONS and FEATURES
+#include "pins.h"                   // assign hardware I/O pins
+
+#include <EEPROM.h>
+#include "src/TeensyUSBAudioMidi.h"
 
 //
 // keyer state machine: the states
@@ -215,10 +159,13 @@ enum WKSTAT {
   XECHO,
   WRPROM,
   RDPROM,
-  MESSAGE
+  MESSAGE,
+  POINTER_1,
+  POINTER_2,
+  POINTER_3
 } winkey_state=FREE;
 
-#ifdef LCDDISPLAY
+#ifdef FEATURE_LCDDISPLAY
 //
 // state of the LCD machine
 //
@@ -226,11 +173,10 @@ static uint8_t LCDstate  = 0;
 static unsigned long LCDwait = 0;       // pause between two complete "sweeps" of the LCD states
 #endif
 
-
+//////////////////////////////////////////////////////////////////////////////////////////////////////
 //
-// Internal variables of the winkey machine and the keyer
+// EEPROM variables:
 //
-
 //
 // bits used in PinConfig:
 //   b1: side tone on/off
@@ -242,22 +188,48 @@ static unsigned long LCDwait = 0;       // pause between two complete "sweeps" o
 //   b2: serial echo
 //
 
-static uint8_t PinConfig=0x22;          // see above (side tone on/off and hang bits)
-static uint8_t Ratio=50;                // dah/dit ratio = (3*ratio)/50
-static uint8_t PaddlePoint;             // ignored
-static uint8_t Compensation=0;          // Used to modify dit/dah lengths
-static uint8_t Extension=0;             // ignored
-static uint8_t WPMrange=25;             // CW speed range for SpeedPot
-static uint8_t Farnsworth=10;           // Farnsworth speed (10 means: no Farnsworth)
-static uint8_t MinWPM=5;                // CW speed when speed pot maximally CCW
-static uint8_t Tail=0;                  // PTT tail (in 10 ms), zero means "use hang bits"
-static uint8_t LeadIn=15;               // PTT Lead-in time (in units of 10 ms)
-static uint8_t Weight=50;               // used to modify dit/dah length
-static uint8_t Sidetone=5;              // encodes side tone frequency (b7, "only paddle", is ignored)
-static uint8_t Speed=0;                 // CW speed (zero means: use speed pot)
 static uint8_t ModeRegister=0;          // see above (echos and swap paddle)
+static uint8_t Speed=0;                 // CW speed (zero means: use speed pot)
+static uint8_t Sidetone=5;              // encodes side tone frequency (b7, "only paddle", is ignored)
+static uint8_t Weight=50;               // used to modify dit/dah length
+static uint8_t LeadIn=15;               // PTT Lead-in time (in units of 10 ms)
+static uint8_t Tail=0;                  // PTT tail (in 10 ms), zero means "use hang bits"
+static uint8_t MinWPM=5;                // CW speed when speed pot maximally CCW
+static uint8_t WPMrange=25;             // CW speed range for SpeedPot
+static uint8_t Extension=0;             // ignored
+static uint8_t Compensation=0;          // Used to modify dit/dah lengths
+static uint8_t Farnsworth=10;           // Farnsworth speed (10 means: no Farnsworth)
+static uint8_t PaddlePoint;             // ignored
+static uint8_t Ratio=50;                // dah/dit ratio = (3*ratio)/50
+static uint8_t PinConfig=0x22;          // see above (side tone on/off and hang bits)
 
-  
+//
+// These settings are stored in the EEPROM upon program start when it is found "empty"
+// (the two magic bytes were not found).
+// If there is already data in the eprom, these variables are over-written upon program start
+// with data from the EEPROM.
+//
+// EEPROM layout:
+//
+// Byte  0:    0xA5                 (magic byte)
+// Byte  1:    ModeRegister
+// Byte  2:    Speed                (set to zero otherwise speed pot won't work in standalone)
+// Byte  3:    Sidetone
+// Byte  4:    Weight
+// Byte  5:    LeadIn
+// Byte  6:    Tail
+// Byte  7:    MinWPM
+// Byte  8:    WPMrange
+// Byte  9:    Extension
+// Byte 10:    Compensation
+// Byte 11:    Farnsworth
+// Byte 12:    PaddlePoint
+// Byte 13:    Ratio
+// Byte 14:    PinConfig
+// Byte 15:    0x00                 (magic byte)
+//
+//////////////////////////////////////////////////////////////////////////////////////////////////////
+
 static uint8_t WKstatus=0xC0;           // reported to host when it changes
 
 static int inum;                        // counter for number of bytes received in a given state
@@ -275,7 +247,7 @@ static int     myfreq=800;              // current side tone frequency
 static uint8_t myspeed;                 // current CW speed
 static uint8_t prosign=0;               // set if we are in the middle of a prosign
 
-
+//////////////////////////////////////////////////////////////////////////////////////////////////////
 //
 // Ring buffer for characters queued for sending
 //
@@ -286,6 +258,9 @@ static unsigned char character_buffer[BUFLEN];  // circular buffer
 static int bufrx=0;                             // output (read) pointer
 static int buftx=0;                             // input (write) pointer
 static int bufcnt=0;                            // number of characters in buffer
+//
+//////////////////////////////////////////////////////////////////////////////////////////////////////
+
 
 //
 // "sending" encodes the actual character being sent from the character_buffer
@@ -313,7 +288,7 @@ static int dot_held=0;   // dash paddle state at the beginning of the last dot
 static uint8_t ptt_stat=0;   // current PTT status
 static uint8_t cw_stat=0;    // current CW output line status
 
-#ifdef LCDDISPLAY
+#ifdef FEATURE_LCDDISPLAY
 static char line1[17];   // first line of display - one extra byte so we can fill it with snprintf();
 static char line2[17];   // second line of display - one extra byte so we can fill it with snprintf();
 
@@ -324,18 +299,22 @@ const int rs = RSPIN, en=ENPIN, d4=D4PIN, d5=D5PIN, d6=D6PIN, d7=D7PIN;
 LiquidCrystal lcd(rs, en, d4, d5, d6, d7);
 #endif
 
-#include "src/TeensyUSBAudioMidi.h"
-
 TeensyUSBAudioMidi teensyusbaudiomidi;
 
+void init_from_eeprom();
+
+void setup() {
 //
 // Initialize hardware lines and serial port
 // set up interrupt handler for paddle
+// init eeprom or load variables from eeprom
+// init LCD display (only with the LCDDISPLAY feature)
+// init Audio+MIDI
 //
-void setup() {  
+  
   Serial.begin(1200);  // baud rate has no meaning on 32U4 and Teensy systems
 
-#ifdef STRAIGHT
+#ifdef FEATURE_STRAIGHT_KEY
   pinMode(StraightKey, INPUT_PULLUP);
 #endif    
   pinMode(PaddleLeft,  INPUT_PULLUP);
@@ -350,7 +329,9 @@ void setup() {
   attachInterrupt(digitalPinToInterrupt(PaddleLeft),  PaddleHandler, CHANGE);
   attachInterrupt(digitalPinToInterrupt(PaddleRight), PaddleHandler, CHANGE); 
 
-#ifdef LCDDISPLAY
+  init_from_eeprom();
+  
+#ifdef FEATURE_LCDDISPLAY
   lcd.begin(16,2);
   lcd.clear();
   lcd.display();
@@ -358,6 +339,51 @@ void setup() {
 #endif
 
   teensyusbaudiomidi.setup();
+}
+
+void init_from_eeprom() {
+//
+// If EEPROM contains valid data (magic byte at 0x00 and zero at 0x0F),
+// init variables from EEPROM.
+//
+// If EEPROM contains no valid data, the current settings are written.
+//
+// This is (only) called upon program start and upon "host close" commands
+//
+  
+  if (EEPROM.read(0) == 0xA5 && EEPROM.read(15) == 0) {
+     ModeRegister = EEPROM.read( 1);
+     Speed        = EEPROM.read( 2);
+     Sidetone     = EEPROM.read( 3);
+     Weight       = EEPROM.read( 4);
+     LeadIn       = EEPROM.read( 5);
+     Tail         = EEPROM.read( 6);
+     MinWPM       = EEPROM.read( 7);
+     WPMrange     = EEPROM.read( 8);
+     Extension    = EEPROM.read( 9);
+     Compensation = EEPROM.read(10);
+     Farnsworth   = EEPROM.read(11);
+     PaddlePoint  = EEPROM.read(12);
+     Ratio        = EEPROM.read(13);
+     PinConfig    = EEPROM.read(14);
+  } else {
+    EEPROM.update( 0, 0xA5);
+    EEPROM.update( 1, ModeRegister);
+    EEPROM.update( 2, 0);  // do not write nonzero speed to EEPROM
+    EEPROM.update( 3, Sidetone);
+    EEPROM.update( 4, Weight);
+    EEPROM.update( 5, LeadIn);
+    EEPROM.update( 6, Tail);
+    EEPROM.update( 7, MinWPM);
+    EEPROM.update( 8, WPMrange);
+    EEPROM.update( 9, Extension);
+    EEPROM.update(10, Compensation);
+    EEPROM.update(11, Farnsworth);
+    EEPROM.update(12, PaddlePoint);
+    EEPROM.update(13, Ratio);
+    EEPROM.update(14, PinConfig);
+    EEPROM.update(15, 0x00); 
+  }
 }
 
 //
@@ -463,6 +489,24 @@ void clearbuf() {
 }
 
 //
+// Insert zeroes, for pointer commands
+// This goes to ABSOLUTE POSITION
+//
+void bufzero(int len) {
+  while (len--) {
+    queue(1,0,0,0);
+  }
+}
+
+//
+// Set buffer pointer to ABSOLUTE position
+// for pointer commands
+//
+void setbufpos(int pos) {
+  buftx=pos;
+}
+
+//
 // queue up to 3 chars in character_buffer
 //
 void queue(int n, int a, int b, int c) {
@@ -511,7 +555,7 @@ int FromBuffer() {
 // This function is defined but a no-op if there is no display.
 //
 void ToLCD1(char c) {
-#ifdef LCDDISPLAY  
+#ifdef FEATURE_LCDDISPLAY  
   scroll++;
   if (scroll >= 16) scroll=0;
   line1[scroll]=c;
@@ -683,7 +727,7 @@ void keyer_state_machine() {
         collecting |= 1 << collpos;
         for (i=33; i<= 90; i++) {
           if (collecting == morse[i-33]) {
-             if (ModeRegister & 0x40) ToHost(i);           
+             if ((ModeRegister & 0x40) && hostmode) ToHost(i);           
              ToLCD1(i);         
              break;
           }
@@ -871,7 +915,7 @@ void keyer_state_machine() {
   }
 }
 
-#ifdef LCDDISPLAY
+#ifdef FEATURE_LCDDISPLAY
 ///////////////////////////////////////
 //
 // This is the LCD state machine
@@ -962,9 +1006,15 @@ void WinKey_state_machine() {
       break;
     case RDPROM:
       // dump EEPROM command
-      ToHost(0);
-      inum++;
-      if (inum > 255) winkey_state=FREE;
+      // only dump bytes 0 through 15,
+      // report the others being zero
+      // dump current settings
+      if (inum < 16) {
+        ToHost(EEPROM.read(inum));
+      } else {
+        ToHost(0);
+      }
+      if (inum++ > 255) winkey_state=FREE;
       break;   
     case CANCELSPD:
       // cancel buffered speed, ignored
@@ -1012,7 +1062,11 @@ void WinKey_state_machine() {
         winkey_state=FREE;
         break;
       case WRPROM:
-        // write EEPROM dummy command
+        // write EEPROM command
+        // write the first 16 bytes, ignore the others
+        if (inum < 16) {
+          EEPROM.update(inum, byte);
+        }
         inum++;
         if (inum > 255) winkey_state=FREE;
         break;
@@ -1029,6 +1083,7 @@ void WinKey_state_machine() {
           case 1:     // Admin Reset
             // RESET
             winkey_state=FREE;
+            init_from_eeprom();
             hostmode=0;
             break;
           case 2:     // Admin Open
@@ -1039,7 +1094,7 @@ void WinKey_state_machine() {
             break;
           case 3:     // Admin Close
             hostmode = 0;
-            Speed = 0;  // use Speed Pot
+            init_from_eeprom();
             winkey_state=FREE;
             break;
           case 4:     // Admin Echo
@@ -1237,11 +1292,27 @@ void WinKey_state_machine() {
         // software paddle ignored
         winkey_state=FREE;
         break;
+      case POINTER_1:
+      case POINTER_2:
+         // not clear to me what to do
+         if (byte > 0) byte--;
+         setbufpos(byte);
+         winkey_state=FREE;
+         break;
+      case POINTER_3:
+         // queue some NULLs
+         // not clear to me what to do
+         bufzero(byte);
+         winkey_state=FREE;
+         break;
       case POINTER:
-        // I have no idea what this *should* do
-        // It seems that the number of bytes to "swallow" depends
-        // on the second byte of this sequence, but even this is not
-        // clear. Need to do an experiment with an original K1EL chip.
+        switch (byte) {
+          case 0:  clearbuf(); winkey_state=FREE; break;
+          case 1:  winkey_state=POINTER_1; break;
+          case 2:  winkey_state=POINTER_2; break;
+          case 3:  winkey_state=POINTER_3; break;
+          default: winkey_state=FREE;      break;
+        }
         break;
       case RATIO:
         if (byte < 33) byte=33;
@@ -1326,7 +1397,7 @@ void loop() {
   //
   actual=millis();
 
-#ifdef STRAIGHT
+#ifdef FEATURE_STRAIGHT_KEY
   //
   // handle straight key. This overrides everything else.
   // Use the currently active PTT lead-in time, and for
@@ -1439,7 +1510,7 @@ void loop() {
       //
       // one heart-beat of the LCD state machine
       //
-#ifdef LCDDISPLAY
+#ifdef FEATURE_LCDDISPLAY
       LCD_state_machine();
 #endif
       break;
