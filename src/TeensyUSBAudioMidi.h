@@ -29,22 +29,25 @@
 #include "arm_math.h"
 #include "TeensyAudioTone.h"
 
-#include "TeensyUSBAudioMidiConfiguration.h"
+#include "../config.h"
 
 //
 // Set defaults
 //
-#ifndef MIDI_CW_CHANNEL
-#define MIDI_CW_CHANNEL 1   // use channel 1 as default
+#ifndef OPTION_MIDI_CW_NOTE
+#define OPTION_MIDI_CW_NOTE 1
 #endif
-#ifndef MIDI_CONTROL_CHANNEL
-#define MIDI_CONTROL_CHANNEL 2  // use channel 2 by default
+#ifndef OPTION_MIDI_CW_CHANNEL
+#define OPTION_MIDI_CW_CHANNEL 1   // use channel 1 as default
 #endif
-#ifndef SIDETONE_VOLUME
-#define SIDETONE_VOLUME 0.2
+#ifndef OPTION_MIDI_CONTROL_CHANNEL
+#define OPTION_MIDI_CONTROL_CHANNEL 2  // use channel 2 by default
 #endif
-#ifndef SIDETONE_FREQ
-#define SIDETONE_FREQ  800
+#ifndef OPTION_SIDETONE_VOLUME
+#define OPTION_SIDETONE_VOLUME 0.2
+#endif
+#ifndef OPTION_SIDETONE_FREQ
+#define OPTION_SIDETONE_FREQ  800
 #endif
 
 class TeensyUSBAudioMidi
@@ -55,7 +58,7 @@ public:
         sine(),
         teensyaudiotone(),
         audioout(),
-#ifndef AUDIO_MQS
+#ifndef OPTION_AUDIO_MQS
         sgtl5000(),
 #endif                
         patchinl (usbaudioinput,   0, teensyaudiotone, 0),
@@ -78,7 +81,7 @@ private:
     AudioInputUSB           usbaudioinput;
     AudioSynthWaveformSine  sine;
 	    TeensyAudioTone         teensyaudiotone;
-#ifdef AUDIO_MQS
+#ifdef OPTION_AUDIO_MQS
     AudioOutputMQS          audioout;
 #else
     AudioOutputI2S          audioout;
