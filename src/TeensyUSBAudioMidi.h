@@ -55,7 +55,6 @@ class TeensyUSBAudioMidi
 public:
     TeensyUSBAudioMidi() :
         usbaudioinput(),
-        sine(),
         teensyaudiotone(),
         audioout(),
 #ifndef OPTION_AUDIO_MQS
@@ -63,7 +62,6 @@ public:
 #endif                
         patchinl (usbaudioinput,   0, teensyaudiotone, 0),
         patchinr (usbaudioinput,   1, teensyaudiotone, 1),
-        patchwav (sine,            0, teensyaudiotone, 2),
         patchoutl(teensyaudiotone, 0, audioout,        0),
         patchoutr(teensyaudiotone, 1, audioout,        1)
     {
@@ -79,8 +77,7 @@ public:
 
 private:
     AudioInputUSB           usbaudioinput;
-    AudioSynthWaveformSine  sine;
-	    TeensyAudioTone         teensyaudiotone;
+    TeensyAudioTone         teensyaudiotone;
 #ifdef OPTION_AUDIO_MQS
     AudioOutputMQS          audioout;
 #else
@@ -89,7 +86,6 @@ private:
 #endif
     AudioConnection         patchinl;
     AudioConnection         patchinr;
-    AudioConnection         patchwav;
     AudioConnection         patchoutl;
     AudioConnection         patchoutr;
 

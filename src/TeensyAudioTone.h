@@ -35,13 +35,19 @@ void speed_set(int);
 class TeensyAudioTone : public AudioStream
 {
 public:
-    TeensyAudioTone() : AudioStream(3, inputQueueArray) {
+    TeensyAudioTone() : AudioStream(2, inputQueueArray) {
         tone = 0;
         hangtime = milliseconds2count(6.0);
         windowindex = 0;
+        curr_freq = 400;
+        curr_amplitude = 0.25;
+        makesintab();  // make valid sine tab upon creation, sets sineindex to zero
     }
 
     virtual void update(void);
+
+    void setFrequency(int freq);
+    void setAmplitude(float amp);
 
     void setTone(uint8_t state) {
         tone = state;
@@ -59,13 +65,19 @@ private:
         if (c > 65535) c = 65535; // allow up to 11.88 seconds
         return c;
     }
-    audio_block_t *inputQueueArray[3];
+    audio_block_t *inputQueueArray[2];
 
-    uint8_t tone;
-
+    uint8_t tone;         // tone on/off flag
     uint16_t hangtime;
+    uint8_t windowindex;  // pointer into the "ramp"
+    int     sineindex;    // cyclic pointer into sintab
+    int curr_freq;        // current frequency in sine table
+    int curr_len;         // current length of sine table
+    float curr_amplitude; // current amplitude of sine table
+    int16_t sintab[256];  // length allows for frequencies below 200 Hz
 
-    uint8_t windowindex;
+    void makesintab();    // created sine table from curr_freq and curr_amplitude
+
 };
 
 #undef SAMPLES_PER_MSEC
