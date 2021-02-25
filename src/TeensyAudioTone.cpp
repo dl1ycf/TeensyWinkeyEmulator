@@ -192,7 +192,10 @@ void TeensyAudioTone::setFrequency(int freq) {
   //
   // update current frequency and re-build sine table
   //
-  curr_freq=freq;
+  if (freq < 1) freq=1;  // guard against division by zero
+  curr_len = AUDIO_SAMPLE_RATE/freq;
+  if (curr_len > 256) curr_len=256; // do not accept very low frequencies to keep table small
+  if (curr_len <   5) curr_len=5;   // do not accept very high frequencies
   makesintab();
 }
 
@@ -206,6 +209,8 @@ void TeensyAudioTone::setAmplitude(float amp) {
   makesintab();
 }
 
+#define TWOPI 6.2831853071795864769252867665590
+
 void TeensyAudioTone::makesintab() {
   //
   // Re-build sine table, a single period only
@@ -213,11 +218,6 @@ void TeensyAudioTone::makesintab() {
   int i;
   double arg,fac;
 
-#define TWOPI 6.2831853071795864769252867665590
-
-  curr_len =  AUDIO_SAMPLE_RATE/curr_freq;
-  if (curr_len > 256) curr_len=256; // do not accept very low frequencies to keep table small
-  if (curr_len <   5) curr_len=5;   // do not accept very high frequencies
   //
   // Create new sine wave 
   //
