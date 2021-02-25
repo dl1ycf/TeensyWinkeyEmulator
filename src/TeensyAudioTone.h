@@ -39,8 +39,8 @@ public:
         tone = 0;
         hangtime = milliseconds2count(6.0);
         windowindex = 0;
-        curr_freq = 400;
-        curr_amplitude = 0.25;
+        curr_len = 128;
+        curr_amplitude = 0.0;
         makesintab();  // make valid sine tab upon creation, sets sineindex to zero
     }
 
@@ -71,12 +71,11 @@ private:
     uint16_t hangtime;
     uint8_t windowindex;  // pointer into the "ramp"
     int     sineindex;    // cyclic pointer into sintab
-    int curr_freq;        // current frequency in sine table
     int curr_len;         // current length of sine table
     float curr_amplitude; // current amplitude of sine table
     int16_t sintab[256];  // length allows for frequencies below 200 Hz
 
-    void makesintab();    // created sine table from curr_freq and curr_amplitude
+    void makesintab();    // created sine table from curr_len and curr_amplitude
 
 };
 
