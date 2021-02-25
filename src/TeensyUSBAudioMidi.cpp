@@ -141,10 +141,14 @@ void TeensyUSBAudioMidi::sidetonevolume(int level)
   //
   if (level <  0) level=0;
   if (level > 20) level=20;
+  AudioNoInterrupts();
   teensyaudiotone.setAmplitude(VolTab[level]);
+  AudioInterrupts();
 }
 
 void TeensyUSBAudioMidi::sidetonefrequency(int freq) 
 {
+    AudioNoInterrupts();
     teensyaudiotone.setFrequency(freq);
+    AudioInterrupts();
 }
