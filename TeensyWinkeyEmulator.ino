@@ -1,21 +1,23 @@
+////////////////////////////////////////////////////////////////////////////////////////
 //
-// WinKey emulator
+// Teensy keyer with audio (WinKey emulator)
 //
 // (C) Christoph van Wüllen, DL1YCF, 2020/2021
-//
 //
 // Designed for the Teensy 4, using the "Serial+MIDI+Audio" programming model
 //
 //
-// So far tests with applications on my Macintosh:
+////////////////////////////////////////////////////////////////////////////////////////
 //
-// - works with the "MacWinkeyer" application
-// - works with SkookumLogger
-// - works with fldigi
-// - does key piHPSDR via MIDI messages
+// TODO:
 //
-// MAIN FEATURES
-// =============
+// implement Iambic-A and Ultimatic mode
+//
+////////////////////////////////////////////////////////////////////////////////////////
+//
+//                                MAIN FEATURES
+//
+////////////////////////////////////////////////////////////////////////////////////////
 //
 //   LCD Display
 //   ===========
@@ -25,10 +27,15 @@
 //   the characters just sent (both from Paddle or from serial line), and
 //   the second line contains status info (speed and side tone frequency).
 //
+//
+////////////////////////////////////////////////////////////////////////////////////////
+//
 //   MIDI
 //   ====
 //
 // - MIDI is enabled by default, the settings are in TeensyUSBAudioMIDI.h
+//
+////////////////////////////////////////////////////////////////////////////////////////
 //
 //   Straight key connection
 //   =======================
@@ -36,6 +43,8 @@
 // - If compiled with the STRAIGHT_KEY feature, a straight key can be connected
 //   (the key should connect this input with ground). Straight key takes 
 //   precedence over the paddle.
+//
+////////////////////////////////////////////////////////////////////////////////////////
 //
 //   High-quality side tone
 //   ======================
@@ -46,6 +55,8 @@
 //   your SDR console application. In this case, the headphone connected
 //   to the Teensy (both for MQS and I2S) will have RX audio as well as
 //   a low-latency side tone.
+//
+////////////////////////////////////////////////////////////////////////////////////////
 //
 //   K1EL Winkey (version 2.1) protocol
 //   ==================================
@@ -66,9 +77,51 @@
 //   only the speed can then  be changed with the speed pot.
 //   In "host mode", the settings can be tailored through the WinKey protocol.
 //
-//   If LCD is enabled, the characters sent are displayed in the first line of the LCD
-//   panel.
+////////////////////////////////////////////////////////////////////////////////////////
+// 
+//   Iambic-A/B, Ultimatic, and all that stuff
+//   =========================================
 //
+//   These variants differ in the way the keyer works when *both* contacts of the
+//   paddle are closed. Therefore, these differences all vanish if you use a 
+//   single-lever paddle where only one contact can be closed at a time.
+//
+//   Iambic-A and Iambic-B modes
+//   ---------------------------
+//
+//   In the iambic modes, closing both contacts for some time produces a series
+//   of alternating dits and dahs. If only one of the two contacts opens at
+//   a later time, the series is continued with dits or dahs (only).
+//
+//   In Iambic-A, if both paddles are released then the elements being sent
+//   is completed and then nothing more. This seems to be the most logical
+//   thing to do.
+//   There exists, however the mode Iambic-B. If both paddles are released
+//   while sending a dah, then the following dit will also be sent. This is
+//   not the place discussing this mode, simply because there are people 
+//   used to it.
+//
+//   Ultimatic mode
+//   --------------
+//
+//   There exists a non-iambic mode for paddles. Briefly, if both contacts
+//   are closed, the last one to be closed takes control, and a series
+//   of dots or dashes is sent. If the last-closed contact is released
+//   while the first one is still closed, the first one gains control
+//   again. So to send a letter "X", close the dash paddle first, the
+//   dot paddle shortly thereafter, and release the dot paddle ass 
+//   soon you hear the second dot.
+//  
+//   Note the K1EL chip implements dit/dah "priorities", that is, not the last-closed
+//   contac "wins" but it can be chosen whether dit or dah "wins" when both contacts
+//   are closed. This is *not* implemented here.
+//
+//   The modes are determined by the bits 4 and 5 of the ModeRegister,
+//   00 = Iambic-B, 01 = Iambic-A, 10 = Ultimatic, 11 = Bug
+// 
+//   Any mode not implemented is treated as Iambic-B.
+//
+//   Current status: only Iambic-B implemented, but Iambic-A and Ultimatic planned.
 //
 ////////////////////////////////////////////////////////////////////////////////////////
 //
@@ -76,13 +129,13 @@
 // The whole thing is programmed as three (independent) state machines,
 //
 // keyer state machine:
-//  - handles the paddles and produces the dits and dahs,
-//  - if the paddle is free it transmits characters from the
+//  - handles the paddle/straight key and produces the dits and dahs,
+//  - if the paddle is free it transmits characters from the character ring buffer
 //    
 // WinKey state machine:
 // - handles the serial line and emulates a Winkey (K1EL chip)
 //   device. It "talks" with the keyer by putting characters in the character
-//   character_buffer
+//   riung buffer
 //
 // LCD state machine:
 // - controls the LCD. It does a minimal amount of work upon each heart beat,
@@ -108,6 +161,8 @@ enum KSTAT {
       DASHDELAY,      // pause following a dash
       STARTDOT,       // aquire PTT and start dot
       STARTDASH,      // aquire PTT and start dash
+      STARTSTRAIGHT,  // aquire PTT and send "key-down" message
+      SENDSTRAIGHT,   // wait for releasing the straight key and send "key-up" message
       SNDCHAR_PTT,    // aquire PTT, key-down
       SNDCHAR_ELE,    // wait until end of element (dot or dash), key-up
       SNDCHAR_DELAY   // wait until end of delay (inter-element or inter-word)
@@ -238,8 +293,6 @@ static uint8_t ps1;                     // first byte of a pro-sign
 static uint8_t pausing=0;               // "pause" state
 static uint8_t breakin=1;               // breakin state
 static uint8_t straight=0;              // state of the straight key (1 = pressed, 0 = released)
-static unsigned long StraightDebounce;  // used to debounce straight key input
-static unsigned long StraightHang;      // used to implement the straight key hang time
 static uint8_t tuning=0;                // "Tune" mode active, deactivate paddle
 static uint8_t hostmode  = 0;           // host mode
 static uint8_t SpeedPot =  0;           // Speed value from the Potentiometer
@@ -321,14 +374,11 @@ void setup() {
   pinMode(PaddleRight, INPUT_PULLUP);
   
   pinMode(CWOUT,   OUTPUT);
-  digitalWrite(CWOUT,  LOW);  // pull key-down line down
+  digitalWrite(CWOUT,  LOW);
   
   pinMode(PTTOUT,  OUTPUT);
   digitalWrite(PTTOUT, LOW);
   
-  attachInterrupt(digitalPinToInterrupt(PaddleLeft),  PaddleHandler, CHANGE);
-  attachInterrupt(digitalPinToInterrupt(PaddleRight), PaddleHandler, CHANGE); 
-
   init_from_eeprom();
   
 #ifdef FEATURE_LCDDISPLAY
@@ -349,8 +399,10 @@ void init_from_eeprom() {
 // If EEPROM contains no valid data, the current settings are written.
 //
 // This is (only) called upon program start and upon "host close" commands
+// So after flashing, opening in host mode, changing settings and closing
+// host mode will write the new settings to eeprom.
 //
-  
+
   if (EEPROM.read(0) == 0xA5 && EEPROM.read(15) == 0) {
      ModeRegister = EEPROM.read( 1);
      Speed        = EEPROM.read( 2);
@@ -392,25 +444,6 @@ void init_from_eeprom() {
 void speed_set(int val) 
 {
   Speed=val;
-}
-
-//
-// Interrupt handler for the paddles
-//
-void PaddleHandler() {
-  //
-  // Take care of "swap" mode
-  //
-  if (ModeRegister & 0x08) {
-    kdot=!digitalRead(PaddleRight);
-    kdash=!digitalRead(PaddleLeft);
-  } else { 
-    kdot=!digitalRead(PaddleLeft);
-    kdash=!digitalRead(PaddleRight);
-
-  }
-  if (kdot) memdot=1;
-  if (kdash) memdash=1;
 }
 
 //
@@ -633,7 +666,6 @@ unsigned char morse[58] = {
 // This is the Keyer state machine
 //
 ///////////////////////////////////////
-
 void keyer_state_machine() {
   int i;                        // general counter variable
   uint8_t byte;                 // general one-byte variable
@@ -701,16 +733,12 @@ void keyer_state_machine() {
       default:   hang =  8*dotlen; break;     // cannot happen but makes compiler happy
     }
   }
-  //
-  // hang time starts after inter-element pause, so correct for this
-  //
-  hang -= plen;
 
   //
   // Abort sending buffered characters (and clear the buffer)
   // if a paddle is hit. Set "breakin" flag
   //
-  if ((kdash || kdot) && (keyer_state >= SNDCHAR_PTT)) {
+  if ((kdash || kdot || straight) && (keyer_state >= SNDCHAR_PTT)) {
     breakin=1;
     clearbuf();
     keyer_state=CHECK;
@@ -743,6 +771,10 @@ void keyer_state_machine() {
          ToLCD1(32);     
          sentspace=1;
       }
+      //
+      // The dash, dot and straight key contact may be closed at
+      // the same time. Priority here is straight > dot > dash
+      //
       if (kdash) {
         wait=actual;
         sentspace=0;
@@ -753,8 +785,6 @@ void keyer_state_machine() {
           wait=actual+LeadIn*10;
         }
       }
-      // If dot and dash paddle are hit at the same time,
-      // dot "wins"
       if (kdot) {
         keyer_state=STARTDOT;
         collpos++;
@@ -765,6 +795,16 @@ void keyer_state_machine() {
           wait=actual+LeadIn*10;
         }
       }
+#ifdef FEATURE_STRAIGHT_KEY
+      if (straight) {
+        keyer_state=STARTSTRAIGHT;
+        wait=actual;
+        if (!ptt_stat) {
+          ptt_on();
+          wait=actual+LeadIn*10;
+        }
+      }
+#endif
       break; 
     case STARTDOT:
       // wait = end of PTT lead-in time
@@ -786,6 +826,21 @@ void keyer_state_machine() {
         keydown();
       }
       break;     
+    case STARTSTRAIGHT:
+      // wait = end of PTT lead-in time
+      memdot=memdash=dot_held=dash_held=collecting=collpos=00;
+      if (actual >= wait) {
+        if (straight) {
+          keyer_state=SENDSTRAIGHT;
+          keydown();
+        } else {
+          // key-up during PTT lead-in time: do not send key-down but
+          // init hang time
+          wait=actual+hang;
+          keyer_state=CHECK;
+        }
+        break;
+      }
     case SENDDOT:
       // wait = end of the dot
       if (actual >= wait) {
@@ -793,6 +848,16 @@ void keyer_state_machine() {
         keyup();
         wait=wait+plen;
         keyer_state=DOTDELAY;
+      }
+      break;
+    case SENDSTRAIGHT:
+      //
+      // do nothing until contact opens
+      if (!straight) {
+        last=actual;
+        keyup();
+        wait=actual+hang;
+        keyer_state=CHECK;
       }
       break;
     case DOTDELAY:
@@ -807,7 +872,7 @@ void keyer_state_machine() {
           keyer_state=STARTDOT;
         } else {
           keyer_state=CHECK;
-          wait=actual+hang;
+          wait=actual+hang-plen;
         }
       }
       break;      
@@ -832,7 +897,7 @@ void keyer_state_machine() {
           keyer_state=STARTDASH;
         } else {
           keyer_state=CHECK;
-          wait=actual+hang;
+          wait=actual+hang-plen;
         }
       }
       break;      
@@ -1382,14 +1447,48 @@ void WinKey_state_machine() {
 }
 
 //
+// function to debounce an analog input
+//
+void analogDebounce(unsigned long actual, int pin, unsigned long *debounce, int *value) {
+  int i;
+  int v=*value;
+  if (actual < *debounce) return;
+
+  //
+  // The speed pots report fluctuating values if and analogRead is less
+  // than 200, therefore only the range 200-1000 is used and then
+  // remapped to 0-1000
+  //
+  i=analogRead(pin); // 0 - 1023
+  if (i < 200) i=200;
+  if (i > 1000) i=1000;
+  i = (10*i - 2000)/8;  // 0-1000
+
+  //
+  // We update the value if is has changed substantially, or if it has changed
+  // and reached an end-point
+  //
+  if (i > v + 50 || i < v - 50 || (i == 0 && v > 0) || (i == 1000 && v < 1000)) {
+    *value=i;
+    *debounce=actual+20;
+  }
+}
+
+//
 // This is executed again and again at a high rate.
 // Most of the time, there will be nothing to do.
 //
 void loop() {
   int i;
   static uint8_t LoopCounter=0;
-  static int SpeedPinValue=0;   // current value of the speed pot
-  static int VolPinValue=0;   // current value of the volume pot
+  static int SpeedPinValue=0;              // last value of speed pot
+  static int VolPinValue=0;                // last value of volume pot
+  static unsigned long SpeedDebounce=0;    // used for "debouncing" speed pot
+  static unsigned long VolDebounce=0;      // used for "debouncing" volume pot
+  static unsigned long DotDebounce=0;      // used for "debouncing" dot paddle contact
+  static unsigned long DashDebounce=0;     // used for "debouncing" dash paddle contact
+  static unsigned long StraightDebounce=0; // used for "debouncing" straight key contact
+  static          int  OldVolume=-1;       // last used sidetone volume
   
   //
   //
@@ -1397,116 +1496,73 @@ void loop() {
   //
   actual=millis();
 
+  //
+  // Do all the debouncing. For the left/right contacts assign them to dit/dah or dah/dit
+  // depending on the ModeRegister. If state changes, set dot/dash memory.
+  //
+  if (actual >= DotDebounce) {
+    DotDebounce=actual+10;
+    i=!digitalRead((ModeRegister & 8) ? PaddleRight : PaddleLeft);
+    if (i != kdot) {
+      DotDebounce=actual+10;
+      kdot=i;
+      if (kdot) memdot=1;
+    }
+  }
+  if (actual >= DashDebounce) {
+    i=!digitalRead((ModeRegister & 8) ? PaddleLeft : PaddleRight);
+    if (i != kdash) {
+      DashDebounce=actual+10;
+      kdash=i;
+      if (kdash) memdash=1;
+    }
+  }
 #ifdef FEATURE_STRAIGHT_KEY
-  //
-  // handle straight key. This overrides everything else.
-  // Use the currently active PTT lead-in time, and for
-  // PTT hang use 8 dot length of the currently active speed
-  //
-  
   if (actual >= StraightDebounce) {
     i=!digitalRead(StraightKey);
     if (i != straight) {
-      //
-      // status has changed
-      //
-      straight=i;
       StraightDebounce=actual+10;
-      StraightHang=actual+9999;
-      if (straight) {
-        // key down action
-        if (!ptt_stat) {
-          ptt_on();
-          delay(10*LeadIn);
-          //
-          // if key already released do not key-down
-          // so a very short dit will activate PTT but not produce RF
-          //
-          if (!digitalRead(StraightKey)) keydown();            
-        } else {
-          keydown();
-        }  
-      } else {
-        // key up action: do key-up and (re-)set hang time
-        // Use fixed hang time with 10 dotlengths. This gives
-        // some head-room if you keying is slower with the straight key.
-        keyup();
-        StraightHang = actual + 12000/myspeed;
-      }
-    }  
-  } else {
-    //
-    // While waiting for debounce: read MIDI and drain serial
-    //
-    teensyusbaudiomidi.loop();
-    if (Serial.available()) Serial.read();    
-  }
-  //
-  // If still in "hang" time, do not proceed
-  //
-  if (actual < StraightHang) return;
-  //
-  // First time after hang time over: de-activate PTT
-  //
-  if (StraightHang != 0) {
-    ptt_off();
-    StraightHang=0;
+      straight=i;
+    }
   }
 #endif  
+//
+// The speed pots report fluctuating values if and analogRead is less
+// than 200, therefore only the range 200-1000 is used and then
+// remapped to 0-1000
+//
+#ifdef POTPIN
+  analogDebounce(actual, POTPIN, &SpeedDebounce, &SpeedPinValue);
+#endif
+#ifdef VOLPIN
+  analogDebounce(actual, VOLPIN, &VolDebounce, &VolPinValue);
+#endif
 
 //
 // Distribute the remaining work across different executions of loop()
 //
   switch (LoopCounter++) {
     case 0:
+      myspeed= Speed;
 #ifdef POTPIN
       //
-      // read speed pot. Do not act if change is minimal
-      // since analog reads cost something
-      // Since I experienced instabilities for small valuies,
-      // we only use the range 200 - 1000 and re-map this to
-      // 0-1000
+      // Update speed pot value (this is reported back by WinKey)
+      // and possibly current speed
       //
-      i=analogRead(POTPIN); // 0 - 1023
-      if (i < 200) i=200;
-      if (i > 1000) i=1000;
-      i = (10*i - 2000)/8;
-      if (i > SpeedPinValue + 50 || i < SpeedPinValue - 50) {
-        SpeedPinValue=i;
-        SpeedPot=(i*WPMrange)/1000;
-      }
-#endif      
-      break;
-    case 2:
-#ifdef VOLPIN   
-      //
-      // read volume pot. Do not act if change is minimal
-      // since analog reads cost something.
-      // Since I experienced instabilities for small valuies,
-      // we only use the range 200 - 1000 and re-map this to
-      // 0-1000
-      //
-      i=analogRead(VOLPIN); // 0 - 1023
-      if (i < 200) i=200;
-      if (i > 1000) i=1000;
-      i = (10*i -2000)/8;
-      if (i > VolPinValue + 50 || i < VolPinValue - 50) {
-        VolPinValue=i;
-        // Convert to level, 0-20
-        teensyusbaudiomidi.sidetonevolume((VolPinValue+25)/50);
-      }
-#endif      
-      break;
-   case 4:
-      //
-      // Set speed accordingt to speed pot, send MIDI if speed changed
-      //  
-      myspeed= Speed;
-#ifdef POTPIN      
+      SpeedPot=(SpeedPinValue*WPMrange)/1000;
       if (Speed == 0) myspeed=MinWPM+SpeedPot;
 #endif      
       break;
-    case 6:
+    case 2:
+#ifdef VOLPIN
+      i=VolPinValue/50;
+      if (i != OldVolume) {
+        OldVolume=i;   
+        teensyusbaudiomidi.sidetonevolume(OldVolume);
+      }  
+#endif      
+      break;
+    case 4:
       //
       // one heart-beat of the LCD state machine
       //
@@ -1514,18 +1570,21 @@ void loop() {
       LCD_state_machine();
 #endif
       break;
-    case 8:
+    case 6:
       //
       // One heart-beat of WinKey state machine
       //
       WinKey_state_machine();
       break;
-    case 10:
+    case 8:
       //
       // This is for checking incoming MIDI messages
       //
       teensyusbaudiomidi.loop();
       break;  
+    case 10:
+      // here some debug code can be placed
+      break;
     case 1:
     case 3:
     case 5:
