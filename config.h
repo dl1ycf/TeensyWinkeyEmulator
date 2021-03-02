@@ -10,7 +10,6 @@
 #define OPTION_SIDETONE__VOLUME    0.2  // initial side tone volume
 #define OPTION_SIDETONE_FREQ       800  // initial side tone frequency
 
-#define FEATURE_STRAIGHT_KEY            // define to have straight key support connected to an additional jack
 //#define FEATURE_LCDDISPLAY            // define to support a small 2*16 char LCD display
 
 //
@@ -25,5 +24,5 @@
 // If OPTION_SIDETONE_VOLUME      is not defined 0.2 will be used
 // If OPTION_SIDETONE_FREQ        is not defined 600 Hz will be used
 //
-// Features not defined will not be compiled.
+// Features not defined will not be compiled. The only selectable feature is LCD support.
 //
