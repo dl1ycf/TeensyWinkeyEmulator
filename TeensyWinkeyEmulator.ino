@@ -9,12 +9,6 @@
 //
 ////////////////////////////////////////////////////////////////////////////////////////
 //
-// TODO:
-//
-// implement Iambic-A and Ultimatic mode
-//
-////////////////////////////////////////////////////////////////////////////////////////
-//
 //                                MAIN FEATURES
 //
 ////////////////////////////////////////////////////////////////////////////////////////
@@ -40,9 +34,10 @@
 //   Straight key connection
 //   =======================
 //
-// - If compiled with the STRAIGHT_KEY feature, a straight key can be connected
+// - A straight key can be connected to digital input pin StraightKey.
 //   (the key should connect this input with ground). Straight key takes 
-//   precedence over the paddle.
+//   precedence over the paddle. If you do not define the StraightKey pin
+//   number in pins.h, this feature is essentially deactivated.
 //
 ////////////////////////////////////////////////////////////////////////////////////////
 //
@@ -116,12 +111,16 @@
 //   contac "wins" but it can be chosen whether dit or dah "wins" when both contacts
 //   are closed. This is *not* implemented here.
 //
+//   Bug mode
+//   --------
+// 
+//   In this mode, the dot paddle is treated normally but the dash paddle like a straight
+//   key. And this is exactly how bug mode is implemented here (treating dash paddle
+//   contacts close/open like straight key contacts close/open)
+//
 //   The modes are determined by the bits 4 and 5 of the ModeRegister,
 //   00 = Iambic-B, 01 = Iambic-A, 10 = Ultimatic, 11 = Bug
 // 
-//   Any mode not implemented is treated as Iambic-B.
-//
-//   Current status: only Iambic-B implemented, but Iambic-A and Ultimatic planned.
 //
 ////////////////////////////////////////////////////////////////////////////////////////
 //
@@ -234,18 +233,20 @@ static unsigned long LCDwait = 0;       // pause between two complete "sweeps" o
 //
 //
 // bits used in PinConfig:
-//   b1: side tone on/off
-//   b4/b5: PTT tail = 14 dits (11), 12 dits (10), 9 dits (01), 7 dit(00)
+//   b0:    PTT enable/disable bit, if PTT disabled, LeadIn times will have no effect
+//   b1:    Sidetone enable/disable bit
+//   b4/b5: PTT tail = 2 wordspaces (11), 1.67 wordspaces, 1.33 wordspaces, 1.00 wordspaces dit(00)
 //
 // bits used in ModeRegiser:
-//   b6: paddle echoback
-//   b3: swap paddles
-//   b2: serial echo
+//   b6:    echo characters entered by paddle or straight key (to serial line)
+//   b4/5:  Paddle mode (00 = Iambic-B, 01 = Iambic-A, 10 = Ultimatic, 11 = Bugmode)
+//   b3:    swap paddles
+//   b2:    echo characters received from the serial line as they are transmitted
 //
 
-static uint8_t ModeRegister=0;          // see above (echos and swap paddle)
+static uint8_t ModeRegister=0x10;       // no echos, no swap, Iambic-A by default
 static uint8_t Speed=0;                 // CW speed (zero means: use speed pot)
-static uint8_t Sidetone=5;              // encodes side tone frequency (b7, "only paddle", is ignored)
+static uint8_t Sidetone=5;              // 800 Hz
 static uint8_t Weight=50;               // used to modify dit/dah length
 static uint8_t LeadIn=15;               // PTT Lead-in time (in units of 10 ms)
 static uint8_t Tail=0;                  // PTT tail (in 10 ms), zero means "use hang bits"
@@ -256,7 +257,28 @@ static uint8_t Compensation=0;          // Used to modify dit/dah lengths
 static uint8_t Farnsworth=10;           // Farnsworth speed (10 means: no Farnsworth)
 static uint8_t PaddlePoint;             // ignored
 static uint8_t Ratio=50;                // dah/dit ratio = (3*ratio)/50
-static uint8_t PinConfig=0x22;          // see above (side tone on/off and hang bits)
+static uint8_t PinConfig=0x23;          // PTT and side tone enabled, 1.67 word space hang time
+
+//
+// Macros to read the ModeRegister
+//
+#define PADDLE_SWAP   (ModeRegister & 0x08)
+#define PADDLE_ECHO   (ModeRegister & 0x40)
+#define SERIAL_ECHO   (ModeRegister & 0x04)
+
+#define IAMBIC_A      ((ModeRegister & 0x30) == 0x10)
+#define IAMBIC_B      ((ModeRegister & 0x30) == 0x00)
+#define BUGMODE       ((ModeRegister & 0x30) == 0x30)
+#define ULTIMATIC     ((ModeRegister & 0x30) == 0x20)
+
+//
+// Macros to read PinConfig
+//
+#define SIDETONE_ENABLED (PinConfig & 0x02)
+#define PTT_ENABLED      (PinConfig & 0x01)
+#define HANGBITS         ((PinConfig & 0x30) >> 4)
+
+
 
 //
 // These settings are stored in the EEPROM upon program start when it is found "empty"
@@ -330,10 +352,13 @@ static unsigned long actual;    // time-stamp for this execution of loop()
 //
 // variables updated in interrupt service routine
 //
-static volatile int kdot = 0;     // This variable reflects the value of the dot paddle
-static volatile int kdash = 0;    // This value reflects the value of the dash paddle
-static volatile int memdot=0;     // set, if dot paddle hit since the beginning of the last dash
-static volatile int memdash=0;    // set,  if dash paddle hit since the beginning of the last dot
+static  int kdot = 0;      // This variable reflects the value of the dot paddle
+static  int kdash = 0;     // This value reflects the value of the dash paddle
+static  int memdot=0;      // set, if dot paddle hit since the beginning of the last dash
+static  int memdash=0;     // set,  if dash paddle hit since the beginning of the last dot
+static  int lastpressed=0; // Indicates which paddle was pressed last (for ULTIMATIC)
+static  int eff_kdash;     // effective kdash (may be different from kdash in BUG and ULTIMATIC mode)
+static  int eff_kdot;      // effective kdot  (may be different from kdot in ULTIMATIC mode)
 
 static int dash_held=0;  // dot paddle state at the beginning of the last dash
 static int dot_held=0;   // dash paddle state at the beginning of the last dot
@@ -367,7 +392,7 @@ void setup() {
   
   Serial.begin(1200);  // baud rate has no meaning on 32U4 and Teensy systems
 
-#ifdef FEATURE_STRAIGHT_KEY
+#ifdef StraightKey
   pinMode(StraightKey, INPUT_PULLUP);
 #endif    
   pinMode(PaddleLeft,  INPUT_PULLUP);
@@ -493,6 +518,7 @@ void keyup() {
 void ptt_on() {
   if (ptt_stat) return;
   ptt_stat=1;
+  if (!PTT_ENABLED) return;
   //
   // Actions: raise hardware line, send MIDI NoteOn message
   //
@@ -505,6 +531,7 @@ void ptt_on() {
 //
 void ptt_off() {
   if (!ptt_stat) return;
+  if (!PTT_ENABLED) return;
   ptt_stat=0;
   //
   // Actions: drop hardware line, send MIDI NoteOff message
@@ -676,6 +703,8 @@ void keyer_state_machine() {
   int wlen;                     // inter-word delay in addition to inter-character delay
   int hang;                     // PTT tail hang time
 
+  static unsigned long straight_pressed;  // for timing straight key signals
+
   //
   // It is a little overkill to determine all these values at each heart beat,
   // but the uC should have enough horse-power to handle this
@@ -720,17 +749,18 @@ void keyer_state_machine() {
   }
 
   //
-  // PTT hang time from PTTtail or (if this is zero) from the hang bits
+  // PTT hang time from PTTtail.
+  // If it is zero, or PTT not enabled, use hang bits
   //
-  if (Tail != 0) {
+  if (Tail != 0 && PTT_ENABLED) {
     hang=10*Tail;
   } else {
-    switch (PinConfig & 0x30) {
-      case 0x00: hang =  7*dotlen; break;     //  7 dotlen, 1.00 word spaces
-      case 0x10: hang =  9*dotlen; break;     //  9 dotlen, 1.28 word spaces
-      case 0x20: hang = 12*dotlen; break;     // 12 dotlen, 1.71 word spaces
-      case 0x30: hang = 14*dotlen; break;     // 14 dotlen, 2.00 word spaces 
-      default:   hang =  8*dotlen; break;     // cannot happen but makes compiler happy
+    switch (HANGBITS) {
+      case 0: hang = (21*dotlen)/3; break;     // 1.00 word spaces
+      case 1: hang = (28*dotlen)/3; break;     // 1.33 word spaces
+      case 2: hang = (35*dotlen)/3; break;     // 1.67 word spaces
+      case 3: hang = (42*dotlen)/3; break;     // 2.00 word spaces 
+      default:hang = (30*dotlen)/3; break;     // cannot happen but makes compiler happy
     }
   }
 
@@ -738,7 +768,7 @@ void keyer_state_machine() {
   // Abort sending buffered characters (and clear the buffer)
   // if a paddle is hit. Set "breakin" flag
   //
-  if ((kdash || kdot || straight) && (keyer_state >= SNDCHAR_PTT)) {
+  if ((eff_kdash || eff_kdot || straight) && (keyer_state >= SNDCHAR_PTT)) {
     breakin=1;
     clearbuf();
     keyer_state=CHECK;
@@ -755,7 +785,7 @@ void keyer_state_machine() {
         collecting |= 1 << collpos;
         for (i=33; i<= 90; i++) {
           if (collecting == morse[i-33]) {
-             if ((ModeRegister & 0x40) && hostmode) ToHost(i);           
+             if (PADDLE_ECHO && hostmode) ToHost(i);           
              ToLCD1(i);         
              break;
           }
@@ -767,7 +797,7 @@ void keyer_state_machine() {
       // if there is a long pause, send one space (no matter how long the pause is)
       //
       if (collpos == 0 && sentspace == 0 && actual > last + 6*dotlen) {
-         if (ModeRegister & 0x40) ToHost(32);      
+         if (PADDLE_ECHO && hostmode) ToHost(32);      
          ToLCD1(32);     
          sentspace=1;
       }
@@ -775,43 +805,42 @@ void keyer_state_machine() {
       // The dash, dot and straight key contact may be closed at
       // the same time. Priority here is straight > dot > dash
       //
-      if (kdash) {
+      if (eff_kdash) {
         wait=actual;
         sentspace=0;
         keyer_state=STARTDASH;
         collecting |= (1 << collpos++);
         if (!ptt_stat) {
           ptt_on();
-          wait=actual+LeadIn*10;
+          if (PTT_ENABLED) wait=actual+LeadIn*10;
         }
       }
-      if (kdot) {
+      if (eff_kdot) {
         keyer_state=STARTDOT;
         collpos++;
         wait=actual;
         sentspace=0;
         if (!ptt_stat) {
           ptt_on();
-          wait=actual+LeadIn*10;
+          if (PTT_ENABLED) wait=actual+LeadIn*10;
         }
       }
-#ifdef FEATURE_STRAIGHT_KEY
       if (straight) {
+        sentspace=0;
         keyer_state=STARTSTRAIGHT;
         wait=actual;
         if (!ptt_stat) {
           ptt_on();
-          wait=actual+LeadIn*10;
+          if (PTT_ENABLED) wait=actual+LeadIn*10;
         }
       }
-#endif
       break; 
     case STARTDOT:
       // wait = end of PTT lead-in time
       if (actual >= wait) {
         keyer_state=SENDDOT;
         memdash=0;
-        dash_held=kdash;
+        dash_held=eff_kdash;
         wait=actual+dotlen;
         keydown();
       }
@@ -821,18 +850,19 @@ void keyer_state_machine() {
       if (actual >= wait) {
         keyer_state=SENDDASH;
         memdot=0;
-        dot_held=kdot;
+        dot_held=eff_kdot;
         wait=actual+dashlen;
         keydown();
       }
       break;     
     case STARTSTRAIGHT:
       // wait = end of PTT lead-in time
-      memdot=memdash=dot_held=dash_held=collecting=collpos=00;
+      memdot=memdash=dot_held=dash_held=0;
       if (actual >= wait) {
         if (straight) {
           keyer_state=SENDSTRAIGHT;
           keydown();
+          straight_pressed=actual;
         } else {
           // key-up during PTT lead-in time: do not send key-down but
           // init hang time
@@ -856,6 +886,12 @@ void keyer_state_machine() {
       if (!straight) {
         last=actual;
         keyup();
+        // determine length of elements and treat it as a dash if long enough
+        if (actual  > straight_pressed + 2*plen) {
+          collecting |= (1 << collpos++);
+        } else {
+          collpos++;
+        }
         wait=actual+hang;
         keyer_state=CHECK;
       }
@@ -863,11 +899,11 @@ void keyer_state_machine() {
     case DOTDELAY:
       // wait = end of the pause following a dot
       if (actual >= wait) {
-        if (!kdot && !kdash) dash_held=0;       
-        if (memdash || kdash || dash_held) {
+        if (!eff_kdot && !eff_kdash && IAMBIC_A) dash_held=0;       
+        if (memdash || eff_kdash || dash_held) {
           collecting |= (1 << collpos++);
           keyer_state=STARTDASH;
-        } else if (kdot) {
+        } else if (eff_kdot) {
           collpos++;
           keyer_state=STARTDOT;
         } else {
@@ -888,11 +924,11 @@ void keyer_state_machine() {
     case DASHDELAY:
       // wait = end of the pause following the dash
       if (actual > wait) {
-        if (!kdot && !kdash) dot_held=0;
-        if (memdot || kdot || dot_held) {
+        if (!eff_kdot && !eff_kdash && IAMBIC_A) dot_held=0;
+        if (memdot || eff_kdot || dot_held) {
           collpos++;
           keyer_state=STARTDOT;
-        } else if (kdash) {
+        } else if (eff_kdash) {
           collecting |= (1 << collpos++);
           keyer_state=STARTDASH;
         } else {
@@ -954,7 +990,7 @@ void keyer_state_machine() {
         break;
       case 32:  // space
         // send inter-word distance
-        if (ModeRegister & 0x04) ToHost(32);  // echo      
+        if (SERIAL_ECHO) ToHost(32);  // echo      
         ToLCD1(32);
         sending=1;
         wait=actual + wlen;
@@ -963,14 +999,14 @@ void keyer_state_machine() {
       default:  
         if (byte >='a' && byte <= 'z') byte -= 32;  // convert to lower case
         if (byte > 32 && byte < 'Z') {
-          if (ModeRegister & 0x04) ToHost(byte);  // echo      
+          if (SERIAL_ECHO) ToHost(byte);  // echo      
           ToLCD1(byte);
           sending=morse[byte-33];
           if (sending != 1) {
             wait=actual;  // no lead-in wait by default
             if (!ptt_stat) {
               ptt_on();
-              wait=actual+LeadIn*10;
+              if (PTT_ENABLED) wait=actual+LeadIn*10;
             }  
             keyer_state=SNDCHAR_PTT;
           }
@@ -1502,22 +1538,28 @@ void loop() {
   //
   if (actual >= DotDebounce) {
     DotDebounce=actual+10;
-    i=!digitalRead((ModeRegister & 8) ? PaddleRight : PaddleLeft);
+    i=!digitalRead(PADDLE_SWAP ? PaddleRight : PaddleLeft);
     if (i != kdot) {
       DotDebounce=actual+10;
       kdot=i;
-      if (kdot) memdot=1;
+      if (kdot) {
+        memdot=1;
+        lastpressed=0;
+      }
     }
   }
   if (actual >= DashDebounce) {
-    i=!digitalRead((ModeRegister & 8) ? PaddleLeft : PaddleRight);
+    i=!digitalRead(PADDLE_SWAP ? PaddleLeft : PaddleRight);
     if (i != kdash) {
       DashDebounce=actual+10;
       kdash=i;
-      if (kdash) memdash=1;
+      if (kdash) {
+        memdash=1;
+        lastpressed=1;
+      }
     }
   }
-#ifdef FEATURE_STRAIGHT_KEY
+#ifdef StraightKey
   if (actual >= StraightDebounce) {
     i=!digitalRead(StraightKey);
     if (i != straight) {
@@ -1525,7 +1567,48 @@ void loop() {
       straight=i;
     }
   }
-#endif  
+#endif
+
+/////////////////////////////////////////////////////////////////////////////////
+//
+// The bug and ultimatic modes are not implemented in the keyer.
+// instead, we apply some logic to the "contact closures"
+//
+// So kdash and kdot reflect the "physical" state of the paddle
+// contacts while eff_kdash and eff_kdot are the states as seen by
+// the keyer.
+//
+// BUG MODE:
+//     logical-OR the dash to the straight keyer contact,
+//     and let the effective dash contact always "open"
+//
+// ULTIMATIC MODE:
+//     never report "both contacts closed" to the keyer.
+//     in this case, only the last-pressed contact wins.
+//
+/////////////////////////////////////////////////////////////////////////////////
+
+
+eff_kdash=kdash;
+eff_kdot=kdot;
+
+if (BUGMODE) {
+  straight |= kdash;
+  memdash=0;
+  eff_kdash=0;
+}
+
+if (ULTIMATIC && kdash && kdot) {
+  if (lastpressed) {
+    // last contact closed was dash, so do not report a closed dot contact upstream
+    eff_kdot=0;
+  } else {
+    // last contact closed was dot, so do not report a closed dash contact upstream
+    eff_kdash=0;
+  }    
+}
+
+
 //
 // The speed pots report fluctuating values if and analogRead is less
 // than 200, therefore only the range 200-1000 is used and then
@@ -1556,11 +1639,13 @@ void loop() {
     case 2:
 #ifdef VOLPIN
       i=VolPinValue/50;
+#endif   
+      // set volume to zero if WinKey side tone is not enabled
+      if (!SIDETONE_ENABLED) i=0;   
       if (i != OldVolume) {
         OldVolume=i;   
         teensyusbaudiomidi.sidetonevolume(OldVolume);
-      }  
-#endif      
+      }      
       break;
     case 4:
       //
