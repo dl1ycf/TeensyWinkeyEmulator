@@ -22,15 +22,14 @@
 
 #include <Arduino.h>
 #include "TeensyUSBAudioMidi.h"
-#include "utility/dspinst.h"
 
 void TeensyUSBAudioMidi::setup(void)
 {
     AudioMemory(16);
     AudioNoInterrupts();
 
-    teensyaudiotone.setFrequency(OPTION_SIDETONE_FREQ);
-    teensyaudiotone.setAmplitude(OPTION_SIDETONE_VOLUME);
+    sine.frequency(OPTION_SIDETONE_FREQ);
+    sine.amplitude(OPTION_SIDETONE_VOLUME);
 #ifndef OPTION_AUDIO_MQS    
     sgtl5000.enable();
     sgtl5000.volume(0.8);
@@ -73,7 +72,7 @@ void TeensyUSBAudioMidi::loop(void)
                 case 5 :
                     // Set sidetone amplitude
                     lsb_data = (data << 7) | lsb_data;
-                    teensyaudiotone.setAmplitude(float(lsb_data)/16384.0);
+                    sine.amplitude(float(lsb_data)/16384.0);
                     //Serial.print("ampl ");
                     //Serial.print(data);
                     //Serial.print(" ");
@@ -83,7 +82,7 @@ void TeensyUSBAudioMidi::loop(void)
                 case 6 :
                     // Set sidetone frequency
                     lsb_data = (data << 7) | lsb_data;
-                    teensyaudiotone.setFrequency(lsb_data);
+                    sine.frequency(float(lsb_data));
                     //Serial.print("freq ");
                     //Serial.print(data);
                     //Serial.print(" ");
@@ -141,14 +140,10 @@ void TeensyUSBAudioMidi::sidetonevolume(int level)
   //
   if (level <  0) level=0;
   if (level > 20) level=20;
-  AudioNoInterrupts();
-  teensyaudiotone.setAmplitude(VolTab[level]);
-  AudioInterrupts();
+  sine.amplitude(VolTab[level]);
 }
 
 void TeensyUSBAudioMidi::sidetonefrequency(int freq) 
 {
-    AudioNoInterrupts();
-    teensyaudiotone.setFrequency(freq);
-    AudioInterrupts();
+    sine.frequency((float)freq);
 }

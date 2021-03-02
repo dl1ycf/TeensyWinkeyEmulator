@@ -127,51 +127,46 @@ const int32_t window_table[WINDOW_TABLE_LENGTH] = {
 
 void TeensyAudioTone::update(void)
 {
-    audio_block_t *block_inl, *block_inr;
-    //
-    // static allocation of the output buffer
-    // instead of allocating/releasing again and again.
-    // Although we operate stereo, the left and right samples
-    // of the side tone are the same, so one block is OK.
-    //
-    static audio_block_t block_sidetone;
+    audio_block_t *block_sine, *block_inl, *block_inr;
+    audio_block_t *block_sidetone;
     int16_t i, t;
 
 
-    block_inl = receiveReadOnly(0);
-    block_inr = receiveReadOnly(1);
+    block_inl  = receiveReadOnly(0);
+    block_inr  = receiveReadOnly(1);
+    block_sine = receiveReadOnly(2);
 
-    if (tone || windowindex) {
+    if ((tone || windowindex) && block_sine) {
 
-        if (tone) {
-            // Apply ramp up window and/or send tone to both outputs
-            for (i = 0; i < AUDIO_BLOCK_SAMPLES; i++) {
-                if (sineindex >= curr_len) sineindex=0;
-                if (windowindex < WINDOW_TABLE_LENGTH) {
-                    t = multiply_32x32_rshift32(sintab[sineindex++] << 1, window_table[windowindex++]);
-                } else {
-                    t = sintab[sineindex++];
+        block_sidetone=allocate();
+        if (block_sidetone) {
+            if (tone) {
+                // Apply ramp up window and/or send tone to both outputs
+                for (i = 0; i < AUDIO_BLOCK_SAMPLES; i++) {
+                    if (windowindex < WINDOW_TABLE_LENGTH) {
+                        t = multiply_32x32_rshift32(block_sine->data[i] << 1, window_table[windowindex++]);
+                    } else {
+                        t = block_sine->data[i];
+                    }
+                    block_sidetone->data[i]=t;
                 }
-                block_sidetone.data[i]=t;
-            }
-        } else {
-            // Apply ramp down until 0 window index
-            if (windowindex > WINDOW_TABLE_LENGTH) windowindex = WINDOW_TABLE_LENGTH;
-
-            for (i = 0; i < AUDIO_BLOCK_SAMPLES; i++) {
-                if (windowindex) {
-                    if (sineindex >= curr_len) sineindex=0;
-                    t = multiply_32x32_rshift32(sintab[sineindex++] << 1, window_table[--windowindex]);
-                } else {
-                    t = 0;
+            } else {
+                // Apply ramp down until 0 window index
+                if (windowindex > WINDOW_TABLE_LENGTH) windowindex = WINDOW_TABLE_LENGTH;
+                for (i = 0; i < AUDIO_BLOCK_SAMPLES; i++) {
+                    if (windowindex) {
+                        t = multiply_32x32_rshift32(block_sine->data[i] << 1, window_table[--windowindex]);
+                    } else {
+                        t = 0;
+                    }
+                    block_sidetone->data[i] = t;
                 }
-                block_sidetone.data[i] = t;
             }
+            // Use same data for both ears
+            transmit(block_sidetone,0);
+            transmit(block_sidetone,1);
+            release(block_sidetone);
         }
-
-        // Use same data for both ears
-        transmit(&block_sidetone,0);
-        transmit(&block_sidetone,1);
 
     } else {
 
@@ -180,52 +175,11 @@ void TeensyAudioTone::update(void)
         if (block_inr) transmit(block_inr,1);
     }
 
-    if (block_inl) release(block_inl);
-    if (block_inr) release(block_inr);
+    if (block_sine) release(block_sine);
+    if (block_inl)  release(block_inl);
+    if (block_inr)  release(block_inr);
 
 }
 
 
 #undef WINDOW_TABLE_LENGTH
-
-void TeensyAudioTone::setFrequency(int freq) {
-  //
-  // update current frequency and re-build sine table
-  //
-  if (freq < 1) freq=1;  // guard against division by zero
-  curr_len = AUDIO_SAMPLE_RATE/freq;
-  if (curr_len > 256) curr_len=256; // do not accept very low frequencies to keep table small
-  if (curr_len <   5) curr_len=5;   // do not accept very high frequencies
-  makesintab();
-}
-
-void TeensyAudioTone::setAmplitude(float amp) {
-  //
-  // update current amplitude and re-build sine table
-  //
-  if (amp > 1.0) amp=1.0;
-  if (amp < 0.0) amp=0.0;
-  curr_amplitude=amp;
-  makesintab();
-}
-
-#define TWOPI 6.2831853071795864769252867665590
-
-void TeensyAudioTone::makesintab() {
-  //
-  // Re-build sine table, a single period only
-  //
-  int i;
-  double arg,fac;
-
-  //
-  // Create new sine wave 
-  //
-  arg=TWOPI/(double) curr_len; // sine argument increment from sample to sample
-  fac=32767.0*curr_amplitude;  // amplitude ready for conversion to int16_t
-
-  for (i=0; i< curr_len; i++) {
-    sintab[i]=round(fac*sin(i*arg));
-  }
-  sineindex=0;
-}
