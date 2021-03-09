@@ -72,6 +72,10 @@
 //   only the speed can then  be changed with the speed pot.
 //   In "host mode", the settings can be tailored through the WinKey protocol.
 //
+//   Note that if a valid "magic" byte is found in the EEPROM, then the settings
+//   are loaded on start-up. The settings can be changed through the WinKey
+//   protocol and are written to EEPROM upon each "host close" command.
+//
 ////////////////////////////////////////////////////////////////////////////////////////
 // 
 //   Iambic-A/B, Ultimatic, and all that stuff
@@ -379,7 +383,7 @@ LiquidCrystal lcd(rs, en, d4, d5, d6, d7);
 
 TeensyUSBAudioMidi teensyusbaudiomidi;
 
-void init_from_eeprom();
+void read_from_eeprom();
 
 void setup() {
 //
@@ -397,14 +401,17 @@ void setup() {
 #endif    
   pinMode(PaddleLeft,  INPUT_PULLUP);
   pinMode(PaddleRight, INPUT_PULLUP);
-  
+
+#ifdef CWOUT  
   pinMode(CWOUT,   OUTPUT);
   digitalWrite(CWOUT,  LOW);
-  
+#endif
+#ifdef PTTOUT
   pinMode(PTTOUT,  OUTPUT);
   digitalWrite(PTTOUT, LOW);
+#endif  
   
-  init_from_eeprom();
+  read_from_eeprom();
   
 #ifdef FEATURE_LCDDISPLAY
   lcd.begin(16,2);
@@ -416,17 +423,16 @@ void setup() {
   teensyusbaudiomidi.setup();
 }
 
-void init_from_eeprom() {
+void read_from_eeprom() {
+//
+// Called upons startup and from an Admin:Reset command.  
 //
 // If EEPROM contains valid data (magic byte at 0x00 and zero at 0x0F),
 // init variables from EEPROM.
 //
-// If EEPROM contains no valid data, the current settings are written.
+// If magic bytes are not found, nothing is done.
 //
-// This is (only) called upon program start and upon "host close" commands
-// So after flashing, opening in host mode, changing settings and closing
-// host mode will write the new settings to eeprom.
-//
+
 
   if (EEPROM.read(0) == 0xA5 && EEPROM.read(15) == 0) {
      ModeRegister = EEPROM.read( 1);
@@ -443,7 +449,16 @@ void init_from_eeprom() {
      PaddlePoint  = EEPROM.read(12);
      Ratio        = EEPROM.read(13);
      PinConfig    = EEPROM.read(14);
-  } else {
+  }
+}
+
+void write_to_eeprom() {
+//
+//  write magic bytes and current settings to eeprom
+//  this is called upon the Admin:HostCLose command.
+//  So all settings used in host-mode become effective
+//  the next time the Teensy is powered up
+//  
     EEPROM.update( 0, 0xA5);
     EEPROM.update( 1, ModeRegister);
     EEPROM.update( 2, 0);  // do not write nonzero speed to EEPROM
@@ -460,7 +475,6 @@ void init_from_eeprom() {
     EEPROM.update(13, Ratio);
     EEPROM.update(14, PinConfig);
     EEPROM.update(15, 0x00); 
-  }
 }
 
 //
@@ -496,7 +510,9 @@ void keydown() {
   // Actions: side tone on (if enabled), raise hardware line, send MIDI NoteOn message
   //  
   teensyusbaudiomidi.key(1);
+#ifdef CWOUT  
   digitalWrite(CWOUT, HIGH);
+#endif  
 }
 
 //
@@ -509,7 +525,9 @@ void keyup() {
   // Actions: side tone off, drop hardware line, send MIDI NoteOff message
   //  
   teensyusbaudiomidi.key(0);
+#ifdef CWOUT  
   digitalWrite(CWOUT, LOW);
+#endif
 }  
 
 //
@@ -518,7 +536,6 @@ void keyup() {
 void ptt_on() {
   if (ptt_stat) return;
   ptt_stat=1;
-  if (!PTT_ENABLED) return;
   //
   // Actions: raise hardware line, send MIDI NoteOn message
   //
@@ -531,7 +548,6 @@ void ptt_on() {
 //
 void ptt_off() {
   if (!ptt_stat) return;
-  if (!PTT_ENABLED) return;
   ptt_stat=0;
   //
   // Actions: drop hardware line, send MIDI NoteOff message
@@ -778,7 +794,7 @@ void keyer_state_machine() {
   switch (keyer_state) {
     case CHECK:
       // wait = time when PTT is switched off
-      if (actual >= wait) ptt_off();
+      if (actual >= wait && PTT_ENABLED) ptt_off();
       if (collpos > 0 && actual > last + 2 * dotlen) {
         // a morse code pattern has been entered and the character is complete
         // echo it in ASCII on the display and on the serial line
@@ -810,28 +826,29 @@ void keyer_state_machine() {
         sentspace=0;
         keyer_state=STARTDASH;
         collecting |= (1 << collpos++);
-        if (!ptt_stat) {
+        if (!ptt_stat && PTT_ENABLED) {
           ptt_on();
-          if (PTT_ENABLED) wait=actual+LeadIn*10;
+          wait=actual+LeadIn*10;
         }
       }
       if (eff_kdot) {
+
         keyer_state=STARTDOT;
         collpos++;
         wait=actual;
         sentspace=0;
-        if (!ptt_stat) {
+        if (!ptt_stat && PTT_ENABLED) {
           ptt_on();
-          if (PTT_ENABLED) wait=actual+LeadIn*10;
+          wait=actual+LeadIn*10;
         }
       }
       if (straight) {
         sentspace=0;
         keyer_state=STARTSTRAIGHT;
         wait=actual;
-        if (!ptt_stat) {
+        if (!ptt_stat && PTT_ENABLED) {
           ptt_on();
-          if (PTT_ENABLED) wait=actual+LeadIn*10;
+          wait=actual+LeadIn*10;
         }
       }
       break; 
@@ -1004,9 +1021,9 @@ void keyer_state_machine() {
           sending=morse[byte-33];
           if (sending != 1) {
             wait=actual;  // no lead-in wait by default
-            if (!ptt_stat) {
+            if (!ptt_stat && PTT_ENABLED) {
               ptt_on();
-              if (PTT_ENABLED) wait=actual+LeadIn*10;
+              wait=actual+LeadIn*10;
             }  
             keyer_state=SNDCHAR_PTT;
           }
@@ -1184,7 +1201,7 @@ void WinKey_state_machine() {
           case 1:     // Admin Reset
             // RESET
             winkey_state=FREE;
-            init_from_eeprom();
+            read_from_eeprom();
             hostmode=0;
             break;
           case 2:     // Admin Open
@@ -1195,7 +1212,7 @@ void WinKey_state_machine() {
             break;
           case 3:     // Admin Close
             hostmode = 0;
-            init_from_eeprom();
+            write_to_eeprom();
             winkey_state=FREE;
             break;
           case 4:     // Admin Echo
@@ -1296,13 +1313,17 @@ void WinKey_state_machine() {
         if (byte) {
           clearbuf();
           tuning=1;
-          ptt_on();
-          delay(50);
+          if (PTT_ENABLED) {
+            ptt_on();
+            delay(50);
+          }
           keydown();
         } else {
           keyup();
-          delay(50);
-          ptt_off();
+          if (PTT_ENABLED) 
+            delay(10);
+            ptt_off();
+          }
           tuning=0;
         }
         winkey_state=FREE;
@@ -1537,7 +1558,6 @@ void loop() {
   // depending on the ModeRegister. If state changes, set dot/dash memory.
   //
   if (actual >= DotDebounce) {
-    DotDebounce=actual+10;
     i=!digitalRead(PADDLE_SWAP ? PaddleRight : PaddleLeft);
     if (i != kdot) {
       DotDebounce=actual+10;
@@ -1609,16 +1629,24 @@ if (ULTIMATIC && kdash && kdot) {
 }
 
 
-//
-// The speed pots report fluctuating values if and analogRead is less
-// than 200, therefore only the range 200-1000 is used and then
-// remapped to 0-1000
-//
 #ifdef POTPIN
   analogDebounce(actual, POTPIN, &SpeedDebounce, &SpeedPinValue);
+#else
+  //
+  // If no speed pot is connected, read "500".
+  // This will set the speed to MinWPM + WPMrange/2;
+  SpeedPinValue=500;
 #endif
 #ifdef VOLPIN
   analogDebounce(actual, VOLPIN, &VolDebounce, &VolPinValue);
+#else
+  //
+  // If no volume pot is connected, read "600"
+  // which corresponds to -16 dB
+  // This value will be reinforced each time Winkey changes
+  // the side tone setting from disabled -> enabled.
+  //
+  VolPinValue=600;    // "read" this value if no volume pot connected
 #endif
 
 //
@@ -1627,25 +1655,21 @@ if (ULTIMATIC && kdash && kdot) {
   switch (LoopCounter++) {
     case 0:
       myspeed= Speed;
-#ifdef POTPIN
       //
       // Update speed pot value (this is reported back by WinKey)
       // and possibly current speed
       //
       SpeedPot=(SpeedPinValue*WPMrange)/1000;
       if (Speed == 0) myspeed=MinWPM+SpeedPot;
-#endif      
       break;
     case 2:
-#ifdef VOLPIN
       i=VolPinValue/50;
-#endif   
       // set volume to zero if WinKey side tone is not enabled
       if (!SIDETONE_ENABLED) i=0;   
       if (i != OldVolume) {
         OldVolume=i;   
         teensyusbaudiomidi.sidetonevolume(OldVolume);
-      }      
+      }              
       break;
     case 4:
       //
