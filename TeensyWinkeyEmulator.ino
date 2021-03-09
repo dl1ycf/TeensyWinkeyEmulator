@@ -288,7 +288,9 @@ static uint8_t PinConfig=0x23;          // PTT and side tone enabled, 1.67 word 
 // These settings are stored in the EEPROM upon program start when it is found "empty"
 // (the two magic bytes were not found).
 // If there is already data in the eprom, these variables are over-written upon program start
-// with data from the EEPROM.
+// with data from the EEPROM. This also happens upon "ADMIN CLOSE" and "ADMIN RESET" commands.
+//
+// The EEPROM can be changed through the WinKey protocol (as implemented in any WinKey program)
 //
 // EEPROM layout:
 //
@@ -432,7 +434,6 @@ void read_from_eeprom() {
 //
 // If magic bytes are not found, nothing is done.
 //
-
 
   if (EEPROM.read(0) == 0xA5 && EEPROM.read(15) == 0) {
      ModeRegister = EEPROM.read( 1);
@@ -1099,7 +1100,7 @@ void WinKey_state_machine() {
 
   //
   // Now comes the WinKey state machine
-  // First, handle one-byte commands
+  // First, handle commands that need no further bytes
   //
   switch (winkey_state) {
     case GETPOT:
@@ -1122,24 +1123,43 @@ void WinKey_state_machine() {
     case NULLCMD:
       winkey_state=FREE;
       break;
-    case RDPROM:
-      // dump EEPROM command
-      // only dump bytes 0 through 15,
-      // report the others being zero
-      // dump current settings
-      if (inum < 16) {
-        ToHost(EEPROM.read(inum));
-      } else {
-        ToHost(0);
-      }
-      if (inum++ > 255) winkey_state=FREE;
-      break;   
     case CANCELSPD:
       // cancel buffered speed, ignored
       winkey_state=FREE;
       break;
     case BUFNOP:
       // buffered no-op; ignored
+      winkey_state=FREE;
+      break;
+     case RDPROM:
+      // dump EEPROM command
+      // only dump bytes 0 through 15,
+      // report the others being zero
+      // Nothing must interrupt us, therefore no state machine
+      for (inum=0; inum<16; inum++) {
+        ToHost(EEPROM.read(inum));
+        delay(20);
+      }
+      for (inum=16; inum < 256; inum++) {
+          ToHost(0);
+          delay(20);
+      }
+      winkey_state=FREE;
+      break;
+    case WRPROM:
+      //
+      // Load EEPROM command
+      // nothing must interrupt us, hence no state machine
+      //
+      for (inum=0; inum<16; inum++) {
+        while (!Serial.available()) ;
+        byte=FromHost();
+        EEPROM.update(inum, byte);     
+      }
+      for (inum=16; inum<256; inum++) {
+        while (!Serial.available()) ;
+        byte=FromHost(); 
+      }
       winkey_state=FREE;
       break;
     default:
@@ -1179,15 +1199,6 @@ void WinKey_state_machine() {
         ToHost(byte);
         winkey_state=FREE;
         break;
-      case WRPROM:
-        // write EEPROM command
-        // write the first 16 bytes, ignore the others
-        if (inum < 16) {
-          EEPROM.update(inum, byte);
-        }
-        inum++;
-        if (inum > 255) winkey_state=FREE;
-        break;
       case MESSAGE:
         // output stored message as CW
         winkey_state=FREE;
@@ -1212,7 +1223,7 @@ void WinKey_state_machine() {
             break;
           case 3:     // Admin Close
             hostmode = 0;
-            write_to_eeprom();
+            read_from_eeprom();
             winkey_state=FREE;
             break;
           case 4:     // Admin Echo
@@ -1320,7 +1331,7 @@ void WinKey_state_machine() {
           keydown();
         } else {
           keyup();
-          if (PTT_ENABLED) 
+          if (PTT_ENABLED) {
             delay(10);
             ptt_off();
           }
