@@ -13,17 +13,6 @@
 //
 ////////////////////////////////////////////////////////////////////////////////////////
 //
-//   LCD Display
-//   ===========
-//
-// - If compiled with the FEATURE_LCDDISPLAY feature, it drives a 2*16 LCD display.
-//   The first line contains
-//   the characters just sent (both from Paddle or from serial line), and
-//   the second line contains status info (speed and side tone frequency).
-//
-//
-////////////////////////////////////////////////////////////////////////////////////////
-//
 //   MIDI
 //   ====
 //
@@ -140,11 +129,6 @@
 //   device. It "talks" with the keyer by putting characters in the character
 //   riung buffer
 //
-// LCD state machine:
-// - controls the LCD. It does a minimal amount of work upon each heart beat,
-//   that is, it either calls lcd.print or lcd.setCursor *once* per invocation
-//   of loop()
-//
 ////////////////////////////////////////////////////////////////////////////////////////
 
 #include "config.h"                 // read in OPTIONS and FEATURES
@@ -222,14 +206,6 @@ enum WKSTAT {
   POINTER_2,
   POINTER_3
 } winkey_state=FREE;
-
-#ifdef FEATURE_LCDDISPLAY
-//
-// state of the LCD machine
-//
-static uint8_t LCDstate  = 0;
-static unsigned long LCDwait = 0;       // pause between two complete "sweeps" of the LCD states
-#endif
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////
 //
@@ -358,30 +334,20 @@ static unsigned long actual;    // time-stamp for this execution of loop()
 //
 // variables updated in interrupt service routine
 //
-static  int kdot = 0;      // This variable reflects the value of the dot paddle
-static  int kdash = 0;     // This value reflects the value of the dash paddle
-static  int memdot=0;      // set, if dot paddle hit since the beginning of the last dash
-static  int memdash=0;     // set,  if dash paddle hit since the beginning of the last dot
-static  int lastpressed=0; // Indicates which paddle was pressed last (for ULTIMATIC)
-static  int eff_kdash;     // effective kdash (may be different from kdash in BUG and ULTIMATIC mode)
-static  int eff_kdot;      // effective kdot  (may be different from kdot in ULTIMATIC mode)
+static  uint8_t kdot = 0;      // This variable reflects the value of the dot paddle
+static  uint8_t kdash = 0;     // This value reflects the value of the dash paddle
+static  uint8_t memdot=0;      // set, if dot paddle hit since the beginning of the last dash
+static  uint8_t memdash=0;     // set,  if dash paddle hit since the beginning of the last dot
+static  uint8_t lastpressed=0; // Indicates which paddle was pressed last (for ULTIMATIC)
+static  uint8_t eff_kdash;     // effective kdash (may be different from kdash in BUG and ULTIMATIC mode)
+static  uint8_t eff_kdot;      // effective kdot  (may be different from kdot in ULTIMATIC mode)
+static  uint8_t pttin = 0;     // This variable reflects the value of the foot-switch (PTT-input)  
 
-static int dash_held=0;  // dot paddle state at the beginning of the last dash
-static int dot_held=0;   // dash paddle state at the beginning of the last dot
+static uint8_t dash_held=0;  // dot paddle state at the beginning of the last dash
+static uint8_t dot_held=0;   // dash paddle state at the beginning of the last dot
 
 static uint8_t ptt_stat=0;   // current PTT status
 static uint8_t cw_stat=0;    // current CW output line status
-
-#ifdef FEATURE_LCDDISPLAY
-static char line1[17];   // first line of display - one extra byte so we can fill it with snprintf();
-static char line2[17];   // second line of display - one extra byte so we can fill it with snprintf();
-
-static int scroll=15;           // scroll counter for first line
-
-#include <LiquidCrystal.h>
-const int rs = RSPIN, en=ENPIN, d4=D4PIN, d5=D5PIN, d6=D6PIN, d7=D7PIN;
-LiquidCrystal lcd(rs, en, d4, d5, d6, d7);
-#endif
 
 TeensyUSBAudioMidi teensyusbaudiomidi;
 
@@ -392,7 +358,6 @@ void setup() {
 // Initialize hardware lines and serial port
 // set up interrupt handler for paddle
 // init eeprom or load variables from eeprom
-// init LCD display (only with the LCDDISPLAY feature)
 // init Audio+MIDI
 //
   
@@ -400,7 +365,10 @@ void setup() {
 
 #ifdef StraightKey
   pinMode(StraightKey, INPUT_PULLUP);
-#endif    
+#endif 
+#ifdef PTTIN
+  pinMode(PTTIN, INPUT_PULLUP);
+#endif     
   pinMode(PaddleLeft,  INPUT_PULLUP);
   pinMode(PaddleRight, INPUT_PULLUP);
 
@@ -415,13 +383,6 @@ void setup() {
   
   read_from_eeprom();
   
-#ifdef FEATURE_LCDDISPLAY
-  lcd.begin(16,2);
-  lcd.clear();
-  lcd.display();
-  snprintf_P(line1,17,PSTR("WinKey Emulator    "));
-#endif
-
   teensyusbaudiomidi.setup();
 }
 
@@ -622,23 +583,6 @@ int FromBuffer() {
   return c;
 }
 
-//
-// Put one character into first line of LCD display
-// To this end, the character is put into a cyclic
-// (ring) buffer, and the display routine always
-// puts the last-entered character at the rightmost
-// position of the Display.
-//
-// This function is defined but a no-op if there is no display.
-//
-void ToLCD1(char c) {
-#ifdef FEATURE_LCDDISPLAY  
-  scroll++;
-  if (scroll >= 16) scroll=0;
-  line1[scroll]=c;
-#endif  
-}
-
 // Morse code for ASCII characters 33 - 90, from ITU-R M.1677-1
 // read from bit0 to bit7
 // 0 = dot, 1 = dash
@@ -803,7 +747,6 @@ void keyer_state_machine() {
         for (i=33; i<= 90; i++) {
           if (collecting == morse[i-33]) {
              if (PADDLE_ECHO && hostmode) ToHost(i);           
-             ToLCD1(i);         
              break;
           }
         }
@@ -815,7 +758,6 @@ void keyer_state_machine() {
       //
       if (collpos == 0 && sentspace == 0 && actual > last + 6*dotlen) {
          if (PADDLE_ECHO && hostmode) ToHost(32);      
-         ToLCD1(32);     
          sentspace=1;
       }
       //
@@ -1009,7 +951,6 @@ void keyer_state_machine() {
       case 32:  // space
         // send inter-word distance
         if (SERIAL_ECHO) ToHost(32);  // echo      
-        ToLCD1(32);
         sending=1;
         wait=actual + wlen;
         keyer_state=SNDCHAR_DELAY;
@@ -1018,7 +959,6 @@ void keyer_state_machine() {
         if (byte >='a' && byte <= 'z') byte -= 32;  // convert to lower case
         if (byte > 32 && byte < 'Z') {
           if (SERIAL_ECHO) ToHost(byte);  // echo      
-          ToLCD1(byte);
           sending=morse[byte-33];
           if (sending != 1) {
             wait=actual;  // no lead-in wait by default
@@ -1033,60 +973,6 @@ void keyer_state_machine() {
     }
   }
 }
-
-#ifdef FEATURE_LCDDISPLAY
-///////////////////////////////////////
-//
-// This is the LCD state machine
-//
-///////////////////////////////////////
-void LCD_state_machine() {
-  uint8_t row, col;
-  int i;
-  //
-  // The state of the LCD engine counts from 0 to 63 in a cyclic fashion.
-  // The state variable means:
-  //
-  // b0 = 0/1: do setCursor or print
-  // b1 = 0/1: indicates which row to do
-  // b2-b5   : encodes the column
-  //
-  // This "state machine" programming ensures that we only do a minimal amount of
-  // work here during one execution of loop(). If a complete sweep through the
-  // display positions has been done, there is a pause of 50 msec.
-  //
-  if (actual > LCDwait) {
-    row=(LCDstate & 0x02) >> 1;
-    col=(LCDstate & 0x3C) >> 2;
-    if (LCDstate & 0x01) {
-      switch (row) {
-        case 0:
-          i=((col + scroll +1) & 0x0F);
-          lcd.print(line1[i]);
-          break;
-        case 1:
-          lcd.print(line2[col]);
-          break;
-      }
-    } else {
-      lcd.setCursor(col,row);
-    }
-    LCDstate++;
-    if (LCDstate > 63) {
-      LCDstate=0;
-      LCDwait=actual+50; // do a complete update sweep every 50 msec
-      //
-      // Update status line, containing speed, effective speed, and side tone freq
-      //
-      if (Farnsworth > 10) {
-        snprintf_P(line2,17,PSTR("S%d F%d T%d          "), myspeed, Farnsworth, myfreq);
-      } else {
-        snprintf_P(line2,17,PSTR("S%d F%d T%d          "), myspeed, myspeed, myfreq);
-      }
-    }
-  }
-}
-#endif
 
 ///////////////////////////////////////
 //
@@ -1556,6 +1442,7 @@ void loop() {
   static unsigned long DotDebounce=0;      // used for "debouncing" dot paddle contact
   static unsigned long DashDebounce=0;     // used for "debouncing" dash paddle contact
   static unsigned long StraightDebounce=0; // used for "debouncing" straight key contact
+  static unsigned long PTTdebounce=0;      // used for "debouncing" the footswitch (PTT in)
   static          int  OldVolume=-1;       // last used sidetone volume
   
   //
@@ -1596,6 +1483,15 @@ void loop() {
     if (i != straight) {
       StraightDebounce=actual+10;
       straight=i;
+    }
+  }
+#endif
+#ifdef PTTIN
+  if (actual >= PTTdebounce) {
+    i=!digitalRead(PTTIN);
+    if (i != pttin) {
+      PTTDebounce=actual+10;
+      pttin=i;
     }
   }
 #endif
@@ -1684,25 +1580,17 @@ if (ULTIMATIC && kdash && kdot) {
       break;
     case 4:
       //
-      // one heart-beat of the LCD state machine
-      //
-#ifdef FEATURE_LCDDISPLAY
-      LCD_state_machine();
-#endif
-      break;
-    case 6:
-      //
       // One heart-beat of WinKey state machine
       //
       WinKey_state_machine();
       break;
-    case 8:
+    case 6:
       //
       // This is for checking incoming MIDI messages
       //
       teensyusbaudiomidi.loop();
       break;  
-    case 10:
+    case 8:
       // here some debug code can be placed
       break;
     case 1:
@@ -1710,7 +1598,6 @@ if (ULTIMATIC && kdash && kdot) {
     case 5:
     case 7:
     case 9:
-    case 11:
       //
       // execute the keyer state machine every second loop
       //
