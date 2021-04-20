@@ -136,38 +136,45 @@ void TeensyAudioTone::update(void)
     block_inr  = receiveReadOnly(1);
     block_sine = receiveReadOnly(2);
 
+    //
+    // Use block_sidetone as a "flag" for i"playing side tone"
+    //
+    block_sidetone=NULL;
     if ((tone || windowindex) && block_sine) {
+      block_sidetone=allocate();
+    }
 
-        block_sidetone=allocate();
-        if (block_sidetone) {
-            if (tone) {
-                // Apply ramp up window and/or send tone to both outputs
-                for (i = 0; i < AUDIO_BLOCK_SAMPLES; i++) {
-                    if (windowindex < WINDOW_TABLE_LENGTH) {
-                        t = multiply_32x32_rshift32(block_sine->data[i] << 1, window_table[windowindex++]);
-                    } else {
-                        t = block_sine->data[i];
-                    }
-                    block_sidetone->data[i]=t;
+    //
+    // This guarantees that we do not "hang" in the "window_index > 0" state
+    // if allocation of block_sidetone constantly fails.
+    //
+    if (block_sidetone){
+        if (tone) {
+            // Apply ramp up window and/or send tone to both outputs
+            for (i = 0; i < AUDIO_BLOCK_SAMPLES; i++) {
+                if (windowindex < WINDOW_TABLE_LENGTH) {
+                    t = multiply_32x32_rshift32(block_sine->data[i] << 1, window_table[windowindex++]);
+                } else {
+                    t = block_sine->data[i];
                 }
-            } else {
-                // Apply ramp down until 0 window index
-                if (windowindex > WINDOW_TABLE_LENGTH) windowindex = WINDOW_TABLE_LENGTH;
-                for (i = 0; i < AUDIO_BLOCK_SAMPLES; i++) {
-                    if (windowindex) {
-                        t = multiply_32x32_rshift32(block_sine->data[i] << 1, window_table[--windowindex]);
-                    } else {
-                        t = 0;
-                    }
-                    block_sidetone->data[i] = t;
-                }
+                block_sidetone->data[i]=t;
             }
-            // Use same data for both ears
-            transmit(block_sidetone,0);
-            transmit(block_sidetone,1);
-            release(block_sidetone);
+        } else {
+            // Apply ramp down until 0 window index
+            if (windowindex > WINDOW_TABLE_LENGTH) windowindex = WINDOW_TABLE_LENGTH;
+            for (i = 0; i < AUDIO_BLOCK_SAMPLES; i++) {
+                if (windowindex) {
+                    t = multiply_32x32_rshift32(block_sine->data[i] << 1, window_table[--windowindex]);
+                } else {
+                    t = 0;
+                }
+                block_sidetone->data[i] = t;
+            }
         }
-
+        // Use same data for both ears
+        transmit(block_sidetone,0);
+        transmit(block_sidetone,1);
+        release(block_sidetone);
     } else {
 
         windowindex = 0;
