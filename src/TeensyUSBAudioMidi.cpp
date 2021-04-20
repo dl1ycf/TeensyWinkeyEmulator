@@ -25,7 +25,7 @@
 
 void TeensyUSBAudioMidi::setup(void)
 {
-    AudioMemory(16);
+    AudioMemory(32);
     AudioNoInterrupts();
 
     sine.frequency(OPTION_SIDETONE_FREQ);
