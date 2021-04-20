@@ -30,6 +30,7 @@
 #include "TeensyAudioTone.h"
 
 #include "../config.h"
+
 //
 // Set defaults
 //
@@ -54,6 +55,7 @@ class TeensyUSBAudioMidi
 public:
     TeensyUSBAudioMidi() :
         usbaudioinput(),
+        usbaudiooutput(),
         sine(),
         teensyaudiotone(),
         audioout(),
@@ -64,7 +66,10 @@ public:
         patchinr (usbaudioinput,   1, teensyaudiotone, 1),
         patchwav (sine,            0, teensyaudiotone, 2),
         patchoutl(teensyaudiotone, 0, audioout,        0),
-        patchoutr(teensyaudiotone, 1, audioout,        1)
+        patchoutr(teensyaudiotone, 1, audioout,        1),
+        patchusboutl(teensyaudiotone, 0, usbaudiooutput, 0),
+        patchusboutr(teensyaudiotone, 1, usbaudiooutput, 1)
+
     {
     }
 
@@ -78,6 +83,7 @@ public:
 
 private:
     AudioInputUSB           usbaudioinput;
+    AudioOutputUSB          usbaudiooutput;
     AudioSynthWaveformSine  sine;
     TeensyAudioTone         teensyaudiotone;
 #ifdef OPTION_AUDIO_MQS
@@ -91,6 +97,8 @@ private:
     AudioConnection         patchwav;
     AudioConnection         patchoutl;
     AudioConnection         patchoutr;
+    AudioConnection         patchusboutl;
+    AudioConnection         patchusboutr;
 
     //
     // Side tone level (amplitude), in 20 steps from zero to one, about 2 dB per step
