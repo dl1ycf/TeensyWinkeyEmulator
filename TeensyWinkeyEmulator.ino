@@ -225,13 +225,17 @@ enum WKSTAT {
 //
 
 static uint8_t ModeRegister=0x10;       // no echos, no swap, Iambic-A by default
+#ifdef POTPIN
 static uint8_t Speed=0;                 // CW speed (zero means: use speed pot)
+#else
+static uint8_t Speed=21;                // default value if there is no Potentiometer
+#endif
 static uint8_t Sidetone=5;              // 800 Hz
 static uint8_t Weight=50;               // used to modify dit/dah length
 static uint8_t LeadIn=15;               // PTT Lead-in time (in units of 10 ms)
 static uint8_t Tail=0;                  // PTT tail (in 10 ms), zero means "use hang bits"
-static uint8_t MinWPM=5;                // CW speed when speed pot maximally CCW
-static uint8_t WPMrange=25;             // CW speed range for SpeedPot
+static uint8_t MinWPM=10;               // CW speed when speed pot maximally CCW
+static uint8_t WPMrange=32;             // CW speed range for SpeedPot
 static uint8_t Extension=0;             // ignored
 static uint8_t Compensation=0;          // Used to modify dit/dah lengths
 static uint8_t Farnsworth=10;           // Farnsworth speed (10 means: no Farnsworth)
@@ -341,7 +345,6 @@ static  uint8_t memdash=0;     // set,  if dash paddle hit since the beginning o
 static  uint8_t lastpressed=0; // Indicates which paddle was pressed last (for ULTIMATIC)
 static  uint8_t eff_kdash;     // effective kdash (may be different from kdash in BUG and ULTIMATIC mode)
 static  uint8_t eff_kdot;      // effective kdot  (may be different from kdot in ULTIMATIC mode)
-static  uint8_t pttin = 0;     // This variable reflects the value of the foot-switch (PTT-input)  
 
 static uint8_t dash_held=0;  // dot paddle state at the beginning of the last dash
 static uint8_t dot_held=0;   // dash paddle state at the beginning of the last dot
@@ -365,10 +368,7 @@ void setup() {
 
 #ifdef StraightKey
   pinMode(StraightKey, INPUT_PULLUP);
-#endif 
-#ifdef PTTIN
-  pinMode(PTTIN, INPUT_PULLUP);
-#endif     
+#endif      
   pinMode(PaddleLeft,  INPUT_PULLUP);
   pinMode(PaddleRight, INPUT_PULLUP);
 
@@ -1435,14 +1435,17 @@ void analogDebounce(unsigned long actual, int pin, unsigned long *debounce, int 
 void loop() {
   int i;
   static uint8_t LoopCounter=0;
-  static int SpeedPinValue=0;              // last value of speed pot
-  static int VolPinValue=0;                // last value of volume pot
+static int SpeedPinValue=500;              // default value: mid position
+static int VolPinValue=550;                // default value
+#ifdef POTPIN  
   static unsigned long SpeedDebounce=0;    // used for "debouncing" speed pot
+#endif  
+#ifdef VOLPIN
   static unsigned long VolDebounce=0;      // used for "debouncing" volume pot
+#endif  
   static unsigned long DotDebounce=0;      // used for "debouncing" dot paddle contact
   static unsigned long DashDebounce=0;     // used for "debouncing" dash paddle contact
   static unsigned long StraightDebounce=0; // used for "debouncing" straight key contact
-  static unsigned long PTTdebounce=0;      // used for "debouncing" the footswitch (PTT in)
   static          int  OldVolume=-1;       // last used sidetone volume
   
   //
@@ -1486,15 +1489,7 @@ void loop() {
     }
   }
 #endif
-#ifdef PTTIN
-  if (actual >= PTTdebounce) {
-    i=!digitalRead(PTTIN);
-    if (i != pttin) {
-      PTTDebounce=actual+10;
-      pttin=i;
-    }
-  }
-#endif
+
 
 /////////////////////////////////////////////////////////////////////////////////
 //
@@ -1538,22 +1533,9 @@ if (ULTIMATIC && kdash && kdot) {
 
 #ifdef POTPIN
   analogDebounce(actual, POTPIN, &SpeedDebounce, &SpeedPinValue);
-#else
-  //
-  // If no speed pot is connected, read "500".
-  // This will set the speed to MinWPM + WPMrange/2;
-  SpeedPinValue=500;
 #endif
 #ifdef VOLPIN
   analogDebounce(actual, VOLPIN, &VolDebounce, &VolPinValue);
-#else
-  //
-  // If no volume pot is connected, read "600"
-  // which corresponds to -16 dB
-  // This value will be reinforced each time Winkey changes
-  // the side tone setting from disabled -> enabled.
-  //
-  VolPinValue=600;    // "read" this value if no volume pot connected
 #endif
 
 //
@@ -1567,7 +1549,11 @@ if (ULTIMATIC && kdash && kdot) {
       // and possibly current speed
       //
       SpeedPot=(SpeedPinValue*WPMrange)/1000;
+#ifdef POTPIN
+      //
+      // If there is no potentiometer      
       if (Speed == 0) myspeed=MinWPM+SpeedPot;
+#endif      
       break;
     case 2:
       i=VolPinValue/50;
