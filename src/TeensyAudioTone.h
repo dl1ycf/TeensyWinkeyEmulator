@@ -28,7 +28,16 @@
 #include "AudioStream.h"
 #include "arm_math.h"
 
-#define SAMPLES_PER_MSEC (AUDIO_SAMPLE_RATE_EXACT/1000.0)
+#include "../config.h"
+
+#ifndef OPTION_TRAILING_MUTE
+#define OPTION_TRAILING_MUTE 0
+#endif
+
+//
+// if OPTION_TRAILING_MUTE is zero, MUTE_FRAMES is also zero and then has no effect
+//
+const uint16_t MUTE_BLOCKS = ((long) AUDIO_SAMPLE_RATE)*OPTION_TRAILING_MUTE / (1000L * (long) AUDIO_BLOCK_SAMPLES);
 
 void speed_set(int);
 
@@ -37,8 +46,8 @@ class TeensyAudioTone : public AudioStream
 public:
     TeensyAudioTone() : AudioStream(3, inputQueueArray) {
         tone = 0;
-        hangtime = milliseconds2count(6.0);
         windowindex = 0;
+        muteindex = 0;
     }
 
     virtual void update(void);
@@ -47,25 +56,12 @@ public:
         tone = state;
     }
 
-    void setHangTime(float milliseconds) {
-        hangtime = milliseconds2count(milliseconds);
-        speed_set(13);
-    }
-
 private:
-    uint16_t milliseconds2count(float milliseconds) {
-        if (milliseconds < 0.0) milliseconds = 0.0;
-        uint32_t c = ((uint32_t)(milliseconds*SAMPLES_PER_MSEC)+7)>>3;
-        if (c > 65535) c = 65535; // allow up to 11.88 seconds
-        return c;
-    }
     audio_block_t *inputQueueArray[3];
 
-    uint8_t tone;         // tone on/off flag
-
-    uint16_t hangtime;
-    uint8_t windowindex;  // pointer into the "ramp"
+    uint8_t  tone;         // tone on/off flag
+    uint16_t muteindex;    // counts "mute blocks"
+    uint8_t  windowindex;  // pointer into the "ramp"
 };
 
-#undef SAMPLES_PER_MSEC
 #endif

@@ -137,19 +137,18 @@ void TeensyAudioTone::update(void)
     block_sine = receiveReadOnly(2);
 
     //
-    // Use block_sidetone as a "flag" for i"playing side tone"
-    //
-    block_sidetone=NULL;
-    if ((tone || windowindex) && block_sine) {
-      block_sidetone=allocate();
-    }
-
-    //
+    // Use block_sidetone as a "flag" for "playing side tone"
     // This guarantees that we do not "hang" in the "window_index > 0" state
     // if allocation of block_sidetone constantly fails.
     //
+    block_sidetone=NULL;
+    if ((tone || windowindex || muteindex) && block_sine) {
+      block_sidetone=allocate();
+    }
+
     if (block_sidetone){
         if (tone) {
+            muteindex=MUTE_BLOCKS;
             // Apply ramp up window and/or send tone to both outputs
             for (i = 0; i < AUDIO_BLOCK_SAMPLES; i++) {
                 if (windowindex < WINDOW_TABLE_LENGTH) {
@@ -159,7 +158,7 @@ void TeensyAudioTone::update(void)
                 }
                 block_sidetone->data[i]=t;
             }
-        } else {
+        } else if (windowindex) {
             // Apply ramp down until 0 window index
             if (windowindex > WINDOW_TABLE_LENGTH) windowindex = WINDOW_TABLE_LENGTH;
             for (i = 0; i < AUDIO_BLOCK_SAMPLES; i++) {
@@ -170,6 +169,21 @@ void TeensyAudioTone::update(void)
                 }
                 block_sidetone->data[i] = t;
             }
+        } else {
+          //
+          // do not route RX audio for up to a specified time after the last sent
+          // CW element. Any CW element starting within this will generate
+          // a side tone as normal. Muteindex counts the number of (full) buffers
+          // to use for this, so the granularity is not very fine.
+	  //
+          // NOTE: in the very un-probable case that tone == windowindex == muteindex == 0,
+          //       (since there was a spike on "tone")
+          //       we also arrive here and send one block of silence
+          //
+          for (i = 0; i < AUDIO_BLOCK_SAMPLES; i++) {
+            block_sidetone->data[i] = 0;
+          }
+          if (muteindex > 0) muteindex--;
         }
         // Use same data for both ears
         transmit(block_sidetone,0);
@@ -177,7 +191,8 @@ void TeensyAudioTone::update(void)
         release(block_sidetone);
     } else {
 
-        windowindex = 0;
+        windowindex = 0;  // just in case we arrive here because of a failed allocation
+        muteindex = 0;    // just in case we arrive here because of a failed allocation
         if (block_inl) transmit(block_inl,0);
         if (block_inr) transmit(block_inr,1);
     }

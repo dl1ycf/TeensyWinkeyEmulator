@@ -29,11 +29,23 @@ void TeensyUSBAudioMidi::setup(void)
     AudioNoInterrupts();
 
     sine.frequency(OPTION_SIDETONE_FREQ);
-    sine.amplitude(OPTION_SIDETONE_VOLUME);
+    sine_level=OPTION_SIDETONE_VOLUME;
+    sine.amplitude(sine_level);
+
 #ifndef OPTION_AUDIO_MQS    
     sgtl5000.enable();
-    sgtl5000.volume(0.8);
+    sgtl5000.volume(0.6);
 #endif    
+
+#if defined(tx_key_line_teensy1)
+    pinMode (tx_key_line_teensy1, OUTPUT);
+    digitalWrite (tx_key_line_teensy1, LOW);
+#endif
+
+#if defined(tx_key_line_teensy2)
+    pinMode (tx_key_line_teensy2, OUTPUT);
+    digitalWrite (tx_key_line_teensy2, HIGH);
+#endif
 
     AudioInterrupts();
 
@@ -72,7 +84,8 @@ void TeensyUSBAudioMidi::loop(void)
                 case 5 :
                     // Set sidetone amplitude
                     lsb_data = (data << 7) | lsb_data;
-                    sine.amplitude(float(lsb_data)/16384.0);
+                    sine_level=float(lsb_data)/16384.0;
+                    sine.amplitude(sine_level);
                     //Serial.print("ampl ");
                     //Serial.print(data);
                     //Serial.print(" ");
@@ -108,11 +121,31 @@ void TeensyUSBAudioMidi::loop(void)
 
 void TeensyUSBAudioMidi::key(int state)
 {
-    teensyaudiotone.setTone(state);
+    //
+    // Do not set the tone if volume is essentially zero
+    //
+    if (sine_level > 0.001) {
+      teensyaudiotone.setTone(state);
+    }
     if (state) {
-        usbMIDI.sendNoteOn(OPTION_MIDI_CW_NOTE, 99, OPTION_MIDI_CW_CHANNEL);
+        usbMIDI.sendNoteOn(OPTION_MIDI_CW_NOTE, 127, OPTION_MIDI_CW_CHANNEL);
+#if defined(tx_key_line_teensy1)
+        digitalWrite (tx_key_line_teensy1, HIGH);
+#endif
+
+#if defined(tx_key_line_teensy2)
+        digitalWrite (tx_key_line_teensy2, LOW);
+#endif
+
     } else {
         usbMIDI.sendNoteOff(OPTION_MIDI_CW_NOTE, 0, OPTION_MIDI_CW_CHANNEL);
+#if defined(tx_key_line_teensy1)
+        digitalWrite (tx_key_line_teensy1, LOW);
+#endif
+
+#if defined(tx_key_line_teensy2)
+        digitalWrite (tx_key_line_teensy2, HIGH);
+#endif
     }
     // These messages are time-critical so flush buffer
     usbMIDI.send_now();
@@ -140,7 +173,8 @@ void TeensyUSBAudioMidi::sidetonevolume(int level)
   //
   if (level <  0) level=0;
   if (level > 20) level=20;
-  sine.amplitude(VolTab[level]);
+  sine_level=VolTab[level];
+  sine.amplitude(sine_level);
 }
 
 void TeensyUSBAudioMidi::sidetonefrequency(int freq) 

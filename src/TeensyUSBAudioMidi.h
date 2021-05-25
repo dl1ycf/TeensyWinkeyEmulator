@@ -30,6 +30,7 @@
 #include "TeensyAudioTone.h"
 
 #include "../config.h"
+#include "../pins.h"
 
 //
 // Set defaults
@@ -55,7 +56,9 @@ class TeensyUSBAudioMidi
 public:
     TeensyUSBAudioMidi() :
         usbaudioinput(),
+#ifdef OPTION_ROUTE_AUDIO_BACK
         usbaudiooutput(),
+#endif
         sine(),
         teensyaudiotone(),
         audioout(),
@@ -65,10 +68,12 @@ public:
         patchinl (usbaudioinput,   0, teensyaudiotone, 0),
         patchinr (usbaudioinput,   1, teensyaudiotone, 1),
         patchwav (sine,            0, teensyaudiotone, 2),
-        patchoutl(teensyaudiotone, 0, audioout,        0),
-        patchoutr(teensyaudiotone, 1, audioout,        1),
+#ifdef OPTION_ROUTE_AUDIO_BACK
         patchusboutl(teensyaudiotone, 0, usbaudiooutput, 0),
-        patchusboutr(teensyaudiotone, 1, usbaudiooutput, 1)
+        patchusboutr(teensyaudiotone, 1, usbaudiooutput, 1),
+#endif
+        patchoutl(teensyaudiotone, 0, audioout,        0),
+        patchoutr(teensyaudiotone, 1, audioout,        1) 
 
     {
     }
@@ -83,7 +88,9 @@ public:
 
 private:
     AudioInputUSB           usbaudioinput;
+#ifdef OPTION_ROUTE_AUDIO_BACK
     AudioOutputUSB          usbaudiooutput;
+#endif
     AudioSynthWaveformSine  sine;
     TeensyAudioTone         teensyaudiotone;
 #ifdef OPTION_AUDIO_MQS
@@ -95,18 +102,21 @@ private:
     AudioConnection         patchinl;
     AudioConnection         patchinr;
     AudioConnection         patchwav;
-    AudioConnection         patchoutl;
-    AudioConnection         patchoutr;
+#ifdef OPTION_ROUTE_AUDIO_BACK
     AudioConnection         patchusboutl;
     AudioConnection         patchusboutr;
+#endif
+    AudioConnection         patchoutl;
+    AudioConnection         patchoutr;
 
+    float sine_level;    // this is used to detect "no side tone volume"
     //
     // Side tone level (amplitude), in 20 steps from zero to one, about 2 dB per step
     // This is used to convert the value from the (linear) volume pot to an amplitude level
     //
     float VolTab[21]={0.000,0.0126,0.0158,0.0200,0.0251,0.0316,0.0398,0.0501,0.0631,0.0794,
                       0.100,0.1258,0.1585,0.1995,0.2511,0.3162,0.3981,0.5012,0.6309,0.7943,1.0000};
-    
+
 };
 
 #endif
