@@ -32,12 +32,12 @@
 ////////////////////////////////////////////////////////////////////////////////////////////
 
 
-#define PaddleRight         1      // input for right paddle
-#define PaddleLeft          0      // input for left paddle
+#define PaddleRight         0      // input for right paddle
+#define PaddleLeft          1      // input for left paddle
 #define StraightKey         2      // input for straight key
 
 #define CWOUT               4      // CW keying output (active high)
 #define PTTOUT              5      // PTT output (active high)
 
-#define POTPIN             A2      // analog input pin for the Speed pot (pin 16)
-#define VOLPIN             A3      // analog input pin for the volume pot (pin 17)
+//#define POTPIN             A2      // analog input pin for the Speed pot (pin 16)
+//#define VOLPIN             A3      // analog input pin for the volume pot (pin 17)
