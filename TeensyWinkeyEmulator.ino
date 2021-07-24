@@ -24,7 +24,7 @@
 //   =======================
 //
 // - A straight key can be connected to digital input pin StraightKey.
-//   (the key should connect this input with ground). Straight key takes 
+//   (the key should connect this input with ground). Straight key takes
 //   precedence over the paddle. If you do not define the StraightKey pin
 //   number in pins.h, this feature is essentially deactivated.
 //
@@ -56,7 +56,7 @@
 //     - side tone on/off is implemented
 //     - a speed pot
 //     - a volume pot so you can always have the side tone "on"
-// 
+//
 //   So in standalone mode, this keyer operates on its standard settings,
 //   only the speed can then  be changed with the speed pot.
 //   In "host mode", the settings can be tailored through the WinKey protocol.
@@ -66,12 +66,12 @@
 //   protocol and are written to EEPROM upon each "host close" command.
 //
 ////////////////////////////////////////////////////////////////////////////////////////
-// 
+//
 //   Iambic-A/B, Ultimatic, and all that stuff
 //   =========================================
 //
 //   These variants differ in the way the keyer works when *both* contacts of the
-//   paddle are closed. Therefore, these differences all vanish if you use a 
+//   paddle are closed. Therefore, these differences all vanish if you use a
 //   single-lever paddle where only one contact can be closed at a time.
 //
 //   Iambic-A and Iambic-B modes
@@ -86,7 +86,7 @@
 //   thing to do.
 //   There exists, however the mode Iambic-B. If both paddles are released
 //   while sending a dah, then the following dit will also be sent. This is
-//   not the place discussing this mode, simply because there are people 
+//   not the place discussing this mode, simply because there are people
 //   used to it.
 //
 //   Ultimatic mode
@@ -97,23 +97,23 @@
 //   of dots or dashes is sent. If the last-closed contact is released
 //   while the first one is still closed, the first one gains control
 //   again. So to send a letter "X", close the dash paddle first, the
-//   dot paddle shortly thereafter, and release the dot paddle ass 
+//   dot paddle shortly thereafter, and release the dot paddle as
 //   soon you hear the second dot.
-//  
+//
 //   Note the K1EL chip implements dit/dah "priorities", that is, not the last-closed
 //   contac "wins" but it can be chosen whether dit or dah "wins" when both contacts
 //   are closed. This is *not* implemented here.
 //
 //   Bug mode
 //   --------
-// 
+//
 //   In this mode, the dot paddle is treated normally but the dash paddle like a straight
 //   key. And this is exactly how bug mode is implemented here (treating dash paddle
 //   contacts close/open like straight key contacts close/open)
 //
 //   The modes are determined by the bits 4 and 5 of the ModeRegister,
 //   00 = Iambic-B, 01 = Iambic-A, 10 = Ultimatic, 11 = Bug
-// 
+//
 //
 ////////////////////////////////////////////////////////////////////////////////////////
 //
@@ -123,7 +123,7 @@
 // keyer state machine:
 //  - handles the paddle/straight key and produces the dits and dahs,
 //  - if the paddle is free it transmits characters from the character ring buffer
-//    
+//
 // WinKey state machine:
 // - handles the serial line and emulates a Winkey (K1EL chip)
 //   device. It "talks" with the keyer by putting characters in the character
@@ -234,14 +234,14 @@ static uint8_t Sidetone=5;              // 800 Hz
 static uint8_t Weight=50;               // used to modify dit/dah length
 static uint8_t LeadIn=15;               // PTT Lead-in time (in units of 10 ms)
 static uint8_t Tail=0;                  // PTT tail (in 10 ms), zero means "use hang bits"
-static uint8_t MinWPM=10;               // CW speed when speed pot maximally CCW
-static uint8_t WPMrange=32;             // CW speed range for SpeedPot
+static uint8_t MinWPM=8;                // CW speed when speed pot maximally CCW
+static uint8_t WPMrange=20;             // CW speed range for SpeedPot
 static uint8_t Extension=0;             // ignored
 static uint8_t Compensation=0;          // Used to modify dit/dah lengths
 static uint8_t Farnsworth=10;           // Farnsworth speed (10 means: no Farnsworth)
 static uint8_t PaddlePoint;             // ignored
 static uint8_t Ratio=50;                // dah/dit ratio = (3*ratio)/50
-static uint8_t PinConfig=0x23;          // PTT and side tone enabled, 1.67 word space hang time
+static uint8_t PinConfig=0x2F;          // PTT and side tone enabled, 1.67 word space hang time, keyer enabled
 
 //
 // Macros to read the ModeRegister
@@ -261,6 +261,7 @@ static uint8_t PinConfig=0x23;          // PTT and side tone enabled, 1.67 word 
 #define SIDETONE_ENABLED (PinConfig & 0x02)
 #define PTT_ENABLED      (PinConfig & 0x01)
 #define HANGBITS         ((PinConfig & 0x30) >> 4)
+#define KEYER_ENABLED    (PinConfig & 0x0c)
 
 
 
@@ -363,32 +364,32 @@ void setup() {
 // init eeprom or load variables from eeprom
 // init Audio+MIDI
 //
-  
+
   Serial.begin(1200);  // baud rate has no meaning on 32U4 and Teensy systems
 
 #ifdef StraightKey
   pinMode(StraightKey, INPUT_PULLUP);
-#endif      
+#endif
   pinMode(PaddleLeft,  INPUT_PULLUP);
   pinMode(PaddleRight, INPUT_PULLUP);
 
-#ifdef CWOUT  
+#ifdef CWOUT
   pinMode(CWOUT,   OUTPUT);
   digitalWrite(CWOUT,  LOW);
 #endif
 #ifdef PTTOUT
   pinMode(PTTOUT,  OUTPUT);
   digitalWrite(PTTOUT, LOW);
-#endif  
-  
+#endif
+
   read_from_eeprom();
-  
+
   teensyusbaudiomidi.setup();
 }
 
 void read_from_eeprom() {
 //
-// Called upons startup and from an Admin:Reset command.  
+// Called upons startup and from an Admin:Reset command.
 //
 // If EEPROM contains valid data (magic byte at 0x00 and zero at 0x0F),
 // init variables from EEPROM.
@@ -420,7 +421,7 @@ void write_to_eeprom() {
 //  this is called upon the Admin:HostCLose command.
 //  So all settings used in host-mode become effective
 //  the next time the Teensy is powered up
-//  
+//
     EEPROM.update( 0, 0xA5);
     EEPROM.update( 1, ModeRegister);
     EEPROM.update( 2, 0);  // do not write nonzero speed to EEPROM
@@ -436,13 +437,13 @@ void write_to_eeprom() {
     EEPROM.update(12, PaddlePoint);
     EEPROM.update(13, Ratio);
     EEPROM.update(14, PinConfig);
-    EEPROM.update(15, 0x00); 
+    EEPROM.update(15, 0x00);
 }
 
 //
 // "hook" for teensyusbaudio to set the speed
 //
-void speed_set(int val) 
+void speed_set(int val)
 {
   Speed=val;
 }
@@ -463,18 +464,20 @@ void ToHost(int c) {
 }
 
 //
-// "key down" action. 
+// "key down" action.
 //
 void keydown() {
   if (cw_stat) return;
   cw_stat=1;
   //
   // Actions: side tone on (if enabled), raise hardware line, send MIDI NoteOn message
-  //  
+  //
   teensyusbaudiomidi.key(1);
-#ifdef CWOUT  
-  digitalWrite(CWOUT, HIGH);
-#endif  
+#ifdef CWOUT
+  if (KEYER_ENABLED) {
+    digitalWrite(CWOUT, HIGH);
+  }
+#endif
 }
 
 //
@@ -485,12 +488,12 @@ void keyup() {
   cw_stat=0;
   //
   // Actions: side tone off, drop hardware line, send MIDI NoteOff message
-  //  
+  //
   teensyusbaudiomidi.key(0);
-#ifdef CWOUT  
-  digitalWrite(CWOUT, LOW);
+#ifdef CWOUT
+    digitalWrite(CWOUT, LOW);
 #endif
-}  
+}
 
 //
 // "PTT on" action
@@ -501,8 +504,12 @@ void ptt_on() {
   //
   // Actions: raise hardware line, send MIDI NoteOn message
   //
-  digitalWrite(PTTOUT, HIGH);
   teensyusbaudiomidi.ptt(1);
+#ifdef PTTOUT
+  if (KEYER_ENABLED) {
+    digitalWrite(PTTOUT, HIGH);
+  }
+#endif
 }
 
 //
@@ -514,8 +521,10 @@ void ptt_off() {
   //
   // Actions: drop hardware line, send MIDI NoteOff message
   //
-  digitalWrite(PTTOUT, LOW);
   teensyusbaudiomidi.ptt(0);
+#ifdef PTTOUT
+    digitalWrite(PTTOUT, LOW);
+#endif
 }
 
 //
@@ -566,7 +575,7 @@ void backspace() {
   if (bufcnt < 1) return;
   buftx--;
   if (buftx < 0) buftx=BUFLEN-1;
-  bufcnt--;  
+  bufcnt--;
   if (bufcnt <= BUFMARGIN) WKstatus &= 0xFE;
 }
 
@@ -595,7 +604,7 @@ unsigned char morse[58] = {
    0x01,     //36 $    not in ITU-R M.1677-1
    0x01,     //37 %    not in ITU-R M.1677-1
    0x01,     //38 &    not in ITU-R M.1677-1
-   0x5e,     //39 '    .----.    
+   0x5e,     //39 '    .----.
    0x36,     //40 (    -.--.
    0x6d,     //41 )    -.--.-
    0x01,     //42 *    not in ITU-R M.1677-1
@@ -633,7 +642,7 @@ unsigned char morse[58] = {
    0x1e,     //74 J    .---
    0x0d,     //75 K    -.-
    0x12,     //76 L    .-..
-   0x07,     //77 M    -- 
+   0x07,     //77 M    --
    0x05,     //78 N    -.
    0x0f,     //79 O    ---
    0x16,     //80 P    .--.
@@ -720,7 +729,7 @@ void keyer_state_machine() {
       case 0: hang = (21*dotlen)/3; break;     // 1.00 word spaces
       case 1: hang = (28*dotlen)/3; break;     // 1.33 word spaces
       case 2: hang = (35*dotlen)/3; break;     // 1.67 word spaces
-      case 3: hang = (42*dotlen)/3; break;     // 2.00 word spaces 
+      case 3: hang = (42*dotlen)/3; break;     // 2.00 word spaces
       default:hang = (30*dotlen)/3; break;     // cannot happen but makes compiler happy
     }
   }
@@ -734,7 +743,7 @@ void keyer_state_machine() {
     clearbuf();
     keyer_state=CHECK;
     wait=actual+hang;
-  }  
+  }
 
   switch (keyer_state) {
     case CHECK:
@@ -746,7 +755,7 @@ void keyer_state_machine() {
         collecting |= 1 << collpos;
         for (i=33; i<= 90; i++) {
           if (collecting == morse[i-33]) {
-             if (PADDLE_ECHO && hostmode) ToHost(i);           
+             if (PADDLE_ECHO && hostmode) ToHost(i);
              break;
           }
         }
@@ -757,7 +766,7 @@ void keyer_state_machine() {
       // if there is a long pause, send one space (no matter how long the pause is)
       //
       if (collpos == 0 && sentspace == 0 && actual > last + 6*dotlen) {
-         if (PADDLE_ECHO && hostmode) ToHost(32);      
+         if (PADDLE_ECHO && hostmode) ToHost(32);
          sentspace=1;
       }
       //
@@ -794,7 +803,7 @@ void keyer_state_machine() {
           wait=actual+LeadIn*10;
         }
       }
-      break; 
+      break;
     case STARTDOT:
       // wait = end of PTT lead-in time
       if (actual >= wait) {
@@ -814,7 +823,7 @@ void keyer_state_machine() {
         wait=actual+dashlen;
         keydown();
       }
-      break;     
+      break;
     case STARTSTRAIGHT:
       // wait = end of PTT lead-in time
       memdot=memdash=dot_held=dash_held=0;
@@ -859,7 +868,7 @@ void keyer_state_machine() {
     case DOTDELAY:
       // wait = end of the pause following a dot
       if (actual >= wait) {
-        if (!eff_kdot && !eff_kdash && IAMBIC_A) dash_held=0;       
+        if (!eff_kdot && !eff_kdash && IAMBIC_A) dash_held=0;
         if (memdash || eff_kdash || dash_held) {
           collecting |= (1 << collpos++);
           keyer_state=STARTDASH;
@@ -871,7 +880,7 @@ void keyer_state_machine() {
           wait=actual+hang-plen;
         }
       }
-      break;      
+      break;
     case SENDDASH:
       // wait = end of the dash
       if (actual >= wait) {
@@ -896,7 +905,7 @@ void keyer_state_machine() {
           wait=actual+hang-plen;
         }
       }
-      break;      
+      break;
     case SNDCHAR_PTT:
       // wait = end of PTT lead-in wait
       if (actual > wait) {
@@ -924,16 +933,16 @@ void keyer_state_machine() {
         if (sending == 1) {
           // character sent completely
           keyer_state=CHECK;
-          if (bufcnt > 0) wait=actual+3*dotlen; // when buffer empty, go RX immediately       
+          if (bufcnt > 0) wait=actual+3*dotlen; // when buffer empty, go RX immediately
         } else {
           keydown();
           keyer_state=SNDCHAR_ELE;
           wait=actual + ((sending & 0x01) ? dashlen : dotlen);
-          sending = (sending >> 1) & 0x7F;  
+          sending = (sending >> 1) & 0x7F;
         }
       }
       break;
-  } 
+  }
   //
   // If keyer is idle and buffered characters available, transfer next one to "sending"
   //
@@ -950,22 +959,22 @@ void keyer_state_machine() {
         break;
       case 32:  // space
         // send inter-word distance
-        if (SERIAL_ECHO) ToHost(32);  // echo      
+        if (SERIAL_ECHO) ToHost(32);  // echo
         sending=1;
         wait=actual + wlen;
         keyer_state=SNDCHAR_DELAY;
         break;
-      default:  
+      default:
         if (byte >='a' && byte <= 'z') byte -= 32;  // convert to lower case
         if (byte > 32 && byte < 'Z') {
-          if (SERIAL_ECHO) ToHost(byte);  // echo      
+          if (SERIAL_ECHO) ToHost(byte);  // echo
           sending=morse[byte-33];
           if (sending != 1) {
             wait=actual;  // no lead-in wait by default
             if (!ptt_stat && PTT_ENABLED) {
               ptt_on();
               wait=actual+LeadIn*10;
-            }  
+            }
             keyer_state=SNDCHAR_PTT;
           }
         }
@@ -1040,17 +1049,17 @@ void WinKey_state_machine() {
       for (inum=0; inum<16; inum++) {
         while (!Serial.available()) ;
         byte=FromHost();
-        EEPROM.update(inum, byte);     
+        EEPROM.update(inum, byte);
       }
       for (inum=16; inum<256; inum++) {
         while (!Serial.available()) ;
-        byte=FromHost(); 
+        byte=FromHost();
       }
       winkey_state=FREE;
       break;
     default:
       // This is a multi-byte command handled below
-      break;  
+      break;
   }
   //
   // Check serial line, if in hostmode or ADMIN command enter "WinKey" state machine
@@ -1109,13 +1118,13 @@ void WinKey_state_machine() {
             break;
           case 3:     // Admin Close
             hostmode = 0;
-            read_from_eeprom();
+            write_to_eeprom();
             winkey_state=FREE;
             break;
           case 4:     // Admin Echo
             winkey_state=XECHO;
             break;
-          case 5:     // Admin 
+          case 5:     // Admin
           case 6:
           case 8:
           case 9:
@@ -1161,7 +1170,7 @@ void WinKey_state_machine() {
       case SIDETONE:
         Sidetone=byte;
         myfreq=4000/(Sidetone & 0x0F);
-        teensyusbaudiomidi.sidetonefrequency(myfreq);     
+        teensyusbaudiomidi.sidetonefrequency(myfreq);
         winkey_state=FREE;
         break;
       case WKSPEED:
@@ -1181,7 +1190,7 @@ void WinKey_state_machine() {
         } else {
           Tail=byte;
           winkey_state=FREE;
-        } 
+        }
         break;
       case POTSET:
         switch (inum++) {
@@ -1245,7 +1254,7 @@ void WinKey_state_machine() {
         // not much error checking done here
         //
         switch (inum++) {
-          case  0: 
+          case  0:
             ModeRegister=byte;
             break;
           case  1:
@@ -1387,15 +1396,15 @@ void WinKey_state_machine() {
     } else {
       WKstatus |= 0x04;
     }
-  }  
-  
+  }
+
   if ((WKstatus != OldWKstatus) && hostmode) {
     ToHost(WKstatus);
     OldWKstatus=WKstatus;
   }
   if ((SpeedPot != OldSpeedPot) && hostmode) {
     ToHost(128+SpeedPot);
-    OldSpeedPot=SpeedPot;  
+    OldSpeedPot=SpeedPot;
   }
 
 }
@@ -1437,22 +1446,23 @@ void loop() {
   static uint8_t LoopCounter=0;
 static int SpeedPinValue=500;              // default value: mid position
 static int VolPinValue=550;                // default value
-#ifdef POTPIN  
+#ifdef POTPIN
   static unsigned long SpeedDebounce=0;    // used for "debouncing" speed pot
-#endif  
+#endif
 #ifdef VOLPIN
   static unsigned long VolDebounce=0;      // used for "debouncing" volume pot
-#endif  
+#endif
   static unsigned long DotDebounce=0;      // used for "debouncing" dot paddle contact
   static unsigned long DashDebounce=0;     // used for "debouncing" dash paddle contact
   static unsigned long StraightDebounce=0; // used for "debouncing" straight key contact
   static          int  OldVolume=-1;       // last used sidetone volume
-  
+
   //
   //
   // This sets the "now" time
   //
   actual=millis();
+
 
   //
   // Do all the debouncing. For the left/right contacts assign them to dit/dah or dah/dit
@@ -1527,7 +1537,7 @@ if (ULTIMATIC && kdash && kdot) {
   } else {
     // last contact closed was dot, so do not report a closed dash contact upstream
     eff_kdash=0;
-  }    
+  }
 }
 
 
@@ -1551,18 +1561,18 @@ if (ULTIMATIC && kdash && kdot) {
       SpeedPot=(SpeedPinValue*WPMrange)/1000;
 #ifdef POTPIN
       //
-      // If there is no potentiometer      
+      // If there is no potentiometer
       if (Speed == 0) myspeed=MinWPM+SpeedPot;
-#endif      
+#endif
       break;
     case 2:
       i=VolPinValue/50;
       // set volume to zero if WinKey side tone is not enabled
-      if (!SIDETONE_ENABLED) i=0;   
+      if (!SIDETONE_ENABLED) i=0;
       if (i != OldVolume) {
-        OldVolume=i;   
+        OldVolume=i;
         teensyusbaudiomidi.sidetonevolume(OldVolume);
-      }              
+      }
       break;
     case 4:
       //
@@ -1575,7 +1585,7 @@ if (ULTIMATIC && kdash && kdot) {
       // This is for checking incoming MIDI messages
       //
       teensyusbaudiomidi.loop();
-      break;  
+      break;
     case 8:
       // here some debug code can be placed
       break;
@@ -1588,7 +1598,7 @@ if (ULTIMATIC && kdash && kdot) {
       // execute the keyer state machine every second loop
       //
       if (!tuning) keyer_state_machine();
-      break;      
+      break;
     default:
       //
       // here we arrive when one cycle is complete
