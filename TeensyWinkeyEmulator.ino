@@ -1,22 +1,248 @@
+
+
+#define MYCONFIG_TEENSY4  // use one of the pre-defined scenarios
+
 ////////////////////////////////////////////////////////////////////////////////////////
 //
 // Teensy keyer with audio (WinKey emulator)
 //
 // (C) Christoph van Wüllen, DL1YCF, 2020/2021
 //
-// Designed for the Teensy 4, using the "Serial+MIDI+Audio" programming model
+// Designed for Arduino or Teensy
+//
+// It can make use of the "MIDI" features of the Teensy 2.0 and 4.0
+// It can make use of the "AUDIO" features of Teensy 4.0
+// There are some basic #define's here at the beginning of the file
+// which control which "backends" are used for signalling key-up/down and
+// PTT on/off events, and the way to produce a side tone. This choice
+// also affects which Serial module can be used. 
+//
+// The possible #defines are explained here
+//
+// HWSERIAL             The WinKey protocol is excecuted over the hardware serial line.
+//
+// SWSERIAL             The WinKey protocol is executed over a software serial line.
+//                      This requires definition of RXD and TXD pins.
+//
+// SERIAL1              The Winkey protocol is executed over the built-in UART
+//                      that does not go to USB (Teensy only)
+//
+// TEENSYUSBAUDIOMIDI   If this is defined, the "TeensyUSBAudioMIDI" class is used, and
+//                      this module takes care about MIDI messages and side tone.
+//                      This requires a Teensy3 or a Teensy4.
+//
+// USBMIDI              If this is defined, MIDI events are generated using the usbMIDI
+//                      class. This is then handled within this documents. Do not define
+//                      together with TEENSYUSBAUDIOMIDI. This requires a Teensy 2/3/4,
+//                      or an 32U4 based Arduino such as the ArduinoMicro.
+//
+// MOCOLUFA             If this is defined, MIDI events are sent via the hardware serial
+//                      port. On Arduinos with a 16U2 co-processer taking care of the USB
+//                      connection, the 16U2 can be re-programmed such that the Arduino
+//                      shows up as a MIDI device.
+// 
+// Incompatible options:
+//
+// -  HWSERIAL overrides SWSERIAL and SERIAL1.
+// -  SWSERIAL overrides SERIAL1
+// -  TEENSYUSBAUDIOMIDI overrides USBMIDI and MOCOLUFA.
+// -  USBMIDI overrides MOCOLUFA
+// -  MOCOLUFA disables HWSERIAL
+//
+// The program probably does not compile on a non-Teensy if SERIAL1 is used                     
 //
 //
+// For convenience, we list some combinations suitable for different hardware:
+//
+// a) plain vanilla Arduino, not using MIDI but the serial WinKey protocol:
+//
+//    #define HWSERIAL
+//    #undef  SWSERIAL
+//    #undef  SERIAL1
+//    #undef  TEENSYUSBAUDIOMIDI
+//    #undef  USBMIDI
+//    #undef  MOCOLUFA
+//
+// b) Arduino with MIDI firmware on the 16U2, using MIDI but not the WinKey protocol
+//
+//    #undef  HWSERIAL
+//    #undef  SWSERIAL
+//    #undef  SERIAL1
+//    #undef  TEENSYUSBAUDIOMIDI
+//    #undef  USBMIDI
+//    #define MOCOLUFA
+//
+// c) Arduino with MIDI firmware on the 16U2, using MIDI and WinKey over software serial line:
+//
+//    #undef  HWSERIAL
+//    #define SWSERIAL
+//    #undef  SERIAL1
+//    #undef  TEENSYUSBAUDIOMIDI
+//    #undef  USBMIDI
+//    #define MOCOLUFA
+//
+// d) Teensy 2.0, using USB MIDI but no WinKey protocol
+//
+//    #undef  HWSERIAL
+//    #undef  SERIAL1
+//    #undef  TEENSYUSBAUDIOMIDI
+//    #define USBMIDI
+//    #undef  MOCOLUFA
+//
+// e) Teensy 2.0, using USB MIDI and WinKey over built-in
+//    UART (pins 7 and 8)
+//
+//    #undef  HWSERIAL
+//    #undef  SWSERIAL
+//    #define SERIAL1
+//    #undef  TEENSYUSBAUDIOMIDI
+//    #define USBMIDI
+//    #undef  MOCOLUFA
+//
+// f) Teensy 3.0 or 4.0, using Serial+MIDI over USB but no high quality audio
+//
+//    #define HWSERIAL
+//    #undef  SWSERIAL
+//    #undef  SERIAL1
+//    #undef TEENSYUSBAUDIOMIDI
+//    #define USBMIDI
+//    #undef  MOCOLUFA
+//
+// g) Teensy 3.0 or 4.0, using Serial+MIDI+Audio
+//
+//    #define HWSERIAL
+//    #undef  SWSERIAL
+//    #undef  SERIAL1
+//    #define TEENSYUSBAUDIOMIDI
+//    #undef  USBMIDI
+//    #undef  MOCOLUFA
+////////////////////////////////////////////////////////////////////////////////////////
+
+#include "config.h"
+
+#ifdef  MYCONFIG_TEENSY2
+#undef  HWSERIAL
+#undef  SWSERIAL
+#define SERIAL1
+#undef  TEENSYUSBASUDIOMIDI
+#define USBMIDI
+#undef  MOCOLUFA
+#endif
+
+#ifdef  MYCONFIG_TEENSY4
+#define HWSERIAL
+#undef  SWSERIAL
+#undef  SERIAL1
+#define TEENSYUSBAUDIOMIDI
+#undef  USBMIDI
+#undef  MOCOLUFA
+#endif
+
+#ifdef  MYCONFIG_ARDUINO_NOMIDI
+#define HWSERIAL
+#undef  SWSERIAL
+#undef  SERIAL1
+#undef  MOCOLUFA
+#undef  USBMIDI
+#undef  TEENSYUSBAUDIOMIDI
+#endif
+
+#ifdef  MYCONFIG_ARDUNIO_MOCOLUFA
+#undef  HWSERIAL
+#undef  SWSERIAL
+#undef  SERIAL1
+#define MOCOLUFA
+#undef  USBMIDI
+#undef  TEENSYUSBAUDIOMIDI
+#endif
+
+////////////////////////////////////////////////////////////////////////////////////////
+//
+// Hardware pins
+//
+// Here we define the hardware pins to be used. Note that with TEENSYUSBAUDIOMIDI
+// and when using the Teensy Audio Shield, many hardware lines are reserved for 
+// I2S audio communication. However, using pins 0,1,2,3,4 is safe also there.
+//
+// Note further that on Arduino's one cannot use pins 0,1 since these are used for
+// the hardware serial line.
+//
+////////////////////////////////////////////////////////////////////////////////////////
+
+#ifdef MYCONFIG_TEENSY2
+#define PaddleRight         1      // input for right paddle
+#define PaddleLeft          0      // input for left paddle
+#define StraightKey         2      // input for straight key
+
+#define CW1                 12      // Key out (active high)
+#define PTT1                14      // PTT out (active high)
+#define PTT2                15      // PTT out (active low)
+#define TONEPIN             16      // used for square wave side tone
+#endif
+
+#ifdef MYCONFIG_TEENSY4
+#define PaddleRight         1      // input for right paddle
+#define PaddleLeft          0      // input for left paddle
+#define StraightKey         2      // input for straight key
+
+#define CW1                 4      // Key out (active high)
+#define PTT1                5      // PTT out (active high)
+#define POTPIN              A2     // Analog input for speed pot
+#endif
+
+#if defined(MYCONFIG_ARDUINO_NOMIDI) || defined(MYCONFIG_ARDUINO_MOCOLUFA)
+#define PaddleRight         3      // input for right paddle
+#define PaddleLeft          2      // input for left paddle
+#define StraightKey         4      // input for straight key
+
+#define CW1                 6       // Key out (active high)
+#define PTT1                7       // PTT out (active high)
+#define PTT2                8       // PTT out (active low)
+#define TONEPIN             9       // used for square wave side tone
+#endif
+
+////////////////////////////////////////////////////////////////////////////////////////
+//
+// Eliminate incompatible options
+//
+////////////////////////////////////////////////////////////////////////////////////////
+
+#ifdef TEENSYUSBAUDIOMIDI
+#undef USBMIDI
+#undef MOCOLUFA
+#endif
+
+#ifdef USBMIDI
+#undef MOCOLUFA
+#endif
+
+#ifdef HWSERIAL
+#undef SWSERIAL
+#undef SERIAL1
+#endif
+
+#ifdef SWSERIAL
+#undef SERIAL1
+#endif
+
+#if !defined(RXD_PIN) || !defined(TXD_PIN)
+#undef SWSERIAL
+#endif
+
 ////////////////////////////////////////////////////////////////////////////////////////
 //
 //                                MAIN FEATURES
 //
 ////////////////////////////////////////////////////////////////////////////////////////
 //
-//   MIDI
-//   ====
+//   MIDI (only with TEENSYUSBAUDIOMIDI, USBMIDI, or MOCOLUFA)
+//   =========================================================
 //
-// - MIDI is enabled by default, the settings are in TeensyUSBAudioMIDI.h
+// - key-up/down and PTT-on/off events are sent via MIDI to the computer.
+// - TEENSYUSBAUDIOMIDI: incoming MIDI messages my control the keyer
+//
+//
+// - the MIDI details (which notes and channels) are defined in config.h
 //
 ////////////////////////////////////////////////////////////////////////////////////////
 //
@@ -28,10 +254,13 @@
 //   precedence over the paddle. If you do not define the StraightKey pin
 //   number in pins.h, this feature is essentially deactivated.
 //
+//   In host mode, characters entered via the straight key are decoded and sent
+//   to the host (just as for characters entered via the paddle).
+//
 ////////////////////////////////////////////////////////////////////////////////////////
 //
-//   High-quality side tone
-//   ======================
+//   High-quality side tone (only with TEENSYUSBAUDIOMIDI)
+//   =====================================================
 //
 //   A high-quality side tone is generated, using either I2S or MQS output
 //   (an i2s audio shield is required in the latter case). The Teensy
@@ -42,7 +271,7 @@
 //
 ////////////////////////////////////////////////////////////////////////////////////////
 //
-//   K1EL Winkey (version 2.1) protocol
+//   K1EL Winkey (version 2.3) protocol
 //   ==================================
 //
 // - Note it is not a full WinKey emulation, just what you need everyday.
@@ -131,11 +360,12 @@
 //
 ////////////////////////////////////////////////////////////////////////////////////////
 
-#include "config.h"                 // read in OPTIONS and FEATURES
-#include "pins.h"                   // assign hardware I/O pins
-
 #include <EEPROM.h>
-#include "src/TeensyUSBAudioMidi.h"
+#define MAGIC  0xA5   // EEPROM magic byte
+
+#ifdef TEENSYUSBAUDIOMIDI
+#include "src/TeensyUSBAudioMidi/TeensyUSBAudioMidi.h"
+#endif
 
 //
 // keyer state machine: the states
@@ -160,7 +390,7 @@ enum KSTAT {
 // The numerical (enum) values ADMIN ... BUFNOP must agree with the
 // winkey command bytes.
 //
-#define WKVERSION 21  // This version is returned to the host
+#define WKVERSION 23  // This version is returned to the host
 
 
 enum WKSTAT {
@@ -224,12 +454,8 @@ enum WKSTAT {
 //   b2:    echo characters received from the serial line as they are transmitted
 //
 
-static uint8_t ModeRegister=0x10;       // no echos, no swap, Iambic-A by default
-#ifdef POTPIN
-static uint8_t Speed=0;                 // CW speed (zero means: use speed pot)
-#else
-static uint8_t Speed=21;                // default value if there is no Potentiometer
-#endif
+static uint8_t ModeRegister=0x54;       // echos, no swap, Iambic-A by default
+static uint8_t Speed=21;                // overridden by the speed pot in standalong mode
 static uint8_t Sidetone=5;              // 800 Hz
 static uint8_t Weight=50;               // used to modify dit/dah length
 static uint8_t LeadIn=15;               // PTT Lead-in time (in units of 10 ms)
@@ -261,23 +487,34 @@ static uint8_t PinConfig=0x2F;          // PTT and side tone enabled, 1.67 word 
 #define SIDETONE_ENABLED (PinConfig & 0x02)
 #define PTT_ENABLED      (PinConfig & 0x01)
 #define HANGBITS         ((PinConfig & 0x30) >> 4)
-#define KEYER_ENABLED    (PinConfig & 0x0c)
 
 
-
+//////////////////////////////////////////////////////////////////////////////////////////////////////
 //
 // These settings are stored in the EEPROM upon program start when it is found "empty"
 // (the two magic bytes were not found).
 // If there is already data in the eprom, these variables are over-written upon program start
-// with data from the EEPROM. This also happens upon "ADMIN CLOSE" and "ADMIN RESET" commands.
+// with data from the EEPROM.
 //
-// The EEPROM can be changed through the WinKey protocol (as implemented in any WinKey program)
+// EEPROM data is restored upon program start, and upon Admin:Close commands. Thus it governs
+// the "standalone" settings.
+//
+// Note that if using a speed pot, the "speed" value is set to zero upon EEPROM read to make the
+// speed pot "active".
+//
+// After Admin:Open (when entering "hostmode") the standalone
+// settings remain effective until explicitly changed.
+//
+// The EEPROM can be changed through the WinKey protocol "ReadEEPROM" and "WriteEEPROM"
+// commands, as implemented in WinKeyer programs available for Windows, MacOS, and Linux.
+//
+// Upon program start, the program default settings are stored in the EEPROM if is is still "blank".
 //
 // EEPROM layout:
 //
-// Byte  0:    0xA5                 (magic byte)
+// Byte  0:    MAGIC                 (magic byte)
 // Byte  1:    ModeRegister
-// Byte  2:    Speed                (set to zero otherwise speed pot won't work in standalone)
+// Byte  2:    Speed
 // Byte  3:    Sidetone
 // Byte  4:    Weight
 // Byte  5:    LeadIn
@@ -308,6 +545,7 @@ static uint8_t SpeedPot =  0;           // Speed value from the Potentiometer
 static int     myfreq=800;              // current side tone frequency
 static uint8_t myspeed;                 // current CW speed
 static uint8_t prosign=0;               // set if we are in the middle of a prosign
+static uint8_t num_elements=0;          // number of elements sent in a sequence
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////
 //
@@ -353,19 +591,54 @@ static uint8_t dot_held=0;   // dash paddle state at the beginning of the last d
 static uint8_t ptt_stat=0;   // current PTT status
 static uint8_t cw_stat=0;    // current CW output line status
 
-TeensyUSBAudioMidi teensyusbaudiomidi;
+#ifdef TEENSYUSBAUDIOMIDI
 
-void read_from_eeprom();
+TeensyUSBAudioMidi teensyusbaudiomidi(OPTION_MIDI_CW_NOTE,
+                                      OPTION_MIDI_PTT_NOTE,
+                                      OPTION_MIDI_SPEED_CTRL,
+                                      OPTION_MIDI_CW_CHANNEL,
+                                      OPTION_MIDI_CONTROL_CHANNEL,
+                                      OPTION_MUTE_ON_PTT,
+                                      0, 0,    // do not use tx1 and tx2 lines in teensyusbaudiomidi
+                                      OPTION_AUDIO_USE_I2S,
+                                      OPTION_SIDETONE_FREQ,
+                                      OPTION_SIDETONE_VOLUME);
+                                      
+#endif
+
+void init_eeprom();
+
+
+//////////////////////////////////////////////////////////////////////////////
+//
+// setup:
+// Initialize serial port and hardware lines
+// init eeprom or load settings from eeprom
+// init Audio+MIDI
+
+//////////////////////////////////////////////////////////////////////////////
+
+#ifdef SWSERIAL
+#include <SoftwareSerial.h>
+SoftwareSerial swserial = SoftwareSerial(RXD_PIN, TXD_PIN);
+#endif
 
 void setup() {
-//
-// Initialize hardware lines and serial port
-// set up interrupt handler for paddle
-// init eeprom or load variables from eeprom
-// init Audio+MIDI
-//
 
+#ifdef HWSERIAL  
   Serial.begin(1200);  // baud rate has no meaning on 32U4 and Teensy systems
+#endif
+#ifdef SERIAL1
+  Serial1.begin(1200);
+#endif
+#ifdef SWSERIAL
+  pinMode(RXD_PIN, INPUT);
+  pinMode(TXD_PIN, OUTPUT);
+  swserial.begin(1200);
+#endif
+#ifdef MOCOLUFA
+  Serial.begin(31250);
+#endif       
 
 #ifdef StraightKey
   pinMode(StraightKey, INPUT_PULLUP);
@@ -373,19 +646,37 @@ void setup() {
   pinMode(PaddleLeft,  INPUT_PULLUP);
   pinMode(PaddleRight, INPUT_PULLUP);
 
-#ifdef CWOUT
-  pinMode(CWOUT,   OUTPUT);
-  digitalWrite(CWOUT,  LOW);
+#ifdef CW1
+  // active-high CW output
+  pinMode(CW1, OUTPUT);
+  digitalWrite(CW1, LOW);
 #endif
-#ifdef PTTOUT
-  pinMode(PTTOUT,  OUTPUT);
-  digitalWrite(PTTOUT, LOW);
+#ifdef CW2
+  active-low CW output
+  pinMode(CW2, OUTPUT);
+  digitalWrite(CW2, HIGH);
 #endif
-
-  read_from_eeprom();
-
-  teensyusbaudiomidi.setup();
+#ifdef PTT1         // active-high PTT output
+  pinMode(PTT1, OUTPUT);
+  digitalWrite(PTT1, LOW);
+#endif
+#ifdef PTT2         //active-low PTT output
+  pinMode(PTT2, OUTPUT);
+  digitalWrite(PTT2, HIGH);
+#endif 
+    
+  init_eeprom();
+#ifdef TEENSYUSBAUDIOMIDI
+ teensyusbaudiomidi.setup();
+#endif
 }
+
+//////////////////////////////////////////////////////////////////////////////
+//
+// read_from_eeprom:
+// if magic bytes in the eeprom are set: read settings from eeprom
+//
+//////////////////////////////////////////////////////////////////////////////
 
 void read_from_eeprom() {
 //
@@ -396,10 +687,16 @@ void read_from_eeprom() {
 //
 // If magic bytes are not found, nothing is done.
 //
+  uint8_t i;
 
-  if (EEPROM.read(0) == 0xA5 && EEPROM.read(15) == 0) {
+
+  Speed = 0;  // switch to speed pot
+  if (EEPROM.read(0) == MAGIC && EEPROM.read(15) == 0) {
      ModeRegister = EEPROM.read( 1);
-     Speed        = EEPROM.read( 2);
+#ifndef POTPIN
+     i            = EEPROM.read( 2);  // restore speed (only) if there is no speed pot
+     if (i >= 5 && i <= 40) Speed=i;  // and if stored value is between 5 and 40 wpm
+#endif     
      Sidetone     = EEPROM.read( 3);
      Weight       = EEPROM.read( 4);
      LeadIn       = EEPROM.read( 5);
@@ -415,16 +712,17 @@ void read_from_eeprom() {
   }
 }
 
+//////////////////////////////////////////////////////////////////////////////
+//
+// write_to_eeprom:
+// write magic bytes and current settings to eeprom
+//
+//////////////////////////////////////////////////////////////////////////////
+
 void write_to_eeprom() {
-//
-//  write magic bytes and current settings to eeprom
-//  this is called upon the Admin:HostCLose command.
-//  So all settings used in host-mode become effective
-//  the next time the Teensy is powered up
-//
-    EEPROM.update( 0, 0xA5);
+    EEPROM.update( 0, MAGIC);
     EEPROM.update( 1, ModeRegister);
-    EEPROM.update( 2, 0);  // do not write nonzero speed to EEPROM
+    EEPROM.update( 2, Speed);
     EEPROM.update( 3, Sidetone);
     EEPROM.update( 4, Weight);
     EEPROM.update( 5, LeadIn);
@@ -440,122 +738,306 @@ void write_to_eeprom() {
     EEPROM.update(15, 0x00);
 }
 
+//////////////////////////////////////////////////////////////////////////////
 //
-// "hook" for teensyusbaudio to set the speed
+// init_eeprom: 
+// if eeprom magic bytes are not set: write current setting to eeprom
+// if eeprom magic bytes are     set: read  settings from eeptorm
 //
+// called once upon startup
+//////////////////////////////////////////////////////////////////////////////
+
+void init_eeprom() {
+  if (EEPROM.read(0) == MAGIC && EEPROM.read(15) == 0) {
+    read_from_eeprom();
+  } else {
+    write_to_eeprom();
+  }
+}
+
+//////////////////////////////////////////////////////////////////////////////
+//
+// "hook" for teensyusbaudio to set the speed, if such a settings
+// is received via MIDI commands
+//
+//////////////////////////////////////////////////////////////////////////////
+#ifdef TEENSYUSBMIDIAUDIO
 void speed_set(int val)
 {
   Speed=val;
 }
+#endif
 
+
+//////////////////////////////////////////////////////////////////////////////
+//
+// MIDI might require to drain or process incoming MIDI messages
+//
+//
+//////////////////////////////////////////////////////////////////////////////
+
+void DrainMIDI() {
+#ifdef TEENSYUSBMIDIAUDIO
+    teensyusbaudiomidi.loop();
+#endif
+#ifdef USBMIDI
+    if (usbMIDI.read()) {
+      // nothing to be done
+    }  
+#endif
+#ifdef MOCOLUFA
+    if (Serial.available()) {
+      Serial.read();
+    }
+#endif        
+}
+
+//////////////////////////////////////////////////////////////////////////////
+//
+// for  MIDI events sent via serial line
+//
+//////////////////////////////////////////////////////////////////////////////
+#ifdef MOCOLUFA
+static void NoteOn(int note, int chan) {
+  Serial.write(0x90 | (--chan & 0x0F));
+  Serial.write(note);
+  Serial.write(127);
+}
+
+static void NoteOff(int note, int chan) {
+  Serial.write(0x80 | (--chan & 0x0F));
+  Serial.write(note);
+  Serial.write(0);
+}
+#endif
+
+//////////////////////////////////////////////////////////////////////////////
+//
+// for  MIDI events sent via USBMIDI
+//
+//////////////////////////////////////////////////////////////////////////////
+#ifdef USBMIDI
+static void NoteOn(int note, int chan) {
+  usbMIDI.sendNoteOn(note, 127, chan);
+  usbMIDI.send_now();
+}
+
+static void NoteOff(int note, int chan){
+  usbMIDI.sendNoteOff(note, 0, chan);
+  usbMIDI.send_now();
+}
+#endif
+
+//////////////////////////////////////////////////////////////////////////////
 //
 // Read one byte from host
 //
+//////////////////////////////////////////////////////////////////////////////
+
 int FromHost() {
-  int c=Serial.read();
+  int c=0;
+#ifdef HWSERIAL  
+  c=Serial.read();
+#endif
+#ifdef SERIAL1
+  c=Serial1.read();
+#endif
+#ifdef SWSERIAL
+  c=swserial.read();
+#endif      
   return c;
 }
 
+//////////////////////////////////////////////////////////////////////////////
 //
 // Write one byte to the host
 //
+//////////////////////////////////////////////////////////////////////////////
+
 void ToHost(int c) {
+#ifdef HWSERIAL  
   Serial.write(c);
+#endif
+#ifdef SERIAL1
+  Serial1.write(c);
+#endif
+#ifdef SWSERIAL
+  swserial.write(c);
+#endif      
 }
 
+//////////////////////////////////////////////////////////////////////////////
 //
-// "key down" action.
+// Check if there is a byte from host
 //
+//////////////////////////////////////////////////////////////////////////////
+
+int ByteAvailable() {
+#ifdef HWSERIAL  
+  return Serial.available();
+#endif
+#ifdef SERIAL1
+  return Serial1.available();
+#endif
+#ifdef swserial
+  return swserial.available();
+#endif        
+  return 0;
+}
+
+//////////////////////////////////////////////////////////////////////////////
+//
+// "key down" action
+//
+//////////////////////////////////////////////////////////////////////////////
+
 void keydown() {
   if (cw_stat) return;
   cw_stat=1;
   //
   // Actions: side tone on (if enabled), raise hardware line, send MIDI NoteOn message
   //
-  teensyusbaudiomidi.key(1);
-#ifdef CWOUT
-  if (KEYER_ENABLED) {
-    digitalWrite(CWOUT, HIGH);
+#ifdef TONEPIN                                          // square wave (if enabled)
+  if (SIDETONE_ENABLED) {
+    tone(TONEPIN, myfreq);
   }
 #endif
+#ifdef CW1                                              // active-high CW output
+  digitalWrite(CW1,HIGH);
+#endif
+#ifdef CW2                                              //active-low CW line
+  digitalWrite(CW2,LOW);
+#endif      
+#if defined(MOCOLUFA) || defined(USBMIDI)               // MIDI message
+  NoteOn(OPTION_MIDI_CW_NOTE, OPTION_MIDI_CW_CHANNEL);
+#endif  
+#ifdef TEENSYUSBAUDIOMIDI                               // MIDI and sidetone
+ teensyusbaudiomidi.key(1);
+#endif  
 }
 
+//////////////////////////////////////////////////////////////////////////////
 //
-// "key up" action.
+// "key up" action
 //
+//////////////////////////////////////////////////////////////////////////////
+
 void keyup() {
   if (!cw_stat) return;
   cw_stat=0;
   //
   // Actions: side tone off, drop hardware line, send MIDI NoteOff message
   //
-  teensyusbaudiomidi.key(0);
-#ifdef CWOUT
-    digitalWrite(CWOUT, LOW);
+#ifdef TONEPIN                                          // square wave line
+  noTone(TONEPIN);
 #endif
+#ifdef CW1                                              // active-high CW output
+  digitalWrite(CW1,LOW);
+#endif
+#ifdef CW2
+  digitalWrite(CW2,HIGH);                               // active-low CW output
+#endif      
+#if defined(MOCOLUFA) || defined(USBMIDI)               // MIDI message
+  NoteOff(OPTION_MIDI_CW_NOTE, OPTION_MIDI_CW_CHANNEL);
+#endif    
+#ifdef TEENSYUSBAUDIOMIDI                               // MIDI and side tone
+ teensyusbaudiomidi.key(0);
+#endif  
 }
 
+//////////////////////////////////////////////////////////////////////////////
 //
 // "PTT on" action
 //
+//////////////////////////////////////////////////////////////////////////////
+
 void ptt_on() {
   if (ptt_stat) return;
   ptt_stat=1;
   //
   // Actions: raise hardware line, send MIDI NoteOn message
   //
-  teensyusbaudiomidi.ptt(1);
-#ifdef PTTOUT
-  if (KEYER_ENABLED) {
-    digitalWrite(PTTOUT, HIGH);
-  }
+#ifdef PTT1                                               // active high PTT line
+  digitalWrite(PTT1,HIGH);
 #endif
+#ifdef PTT2                                               // active low PTT line
+  digitalWrite(PTT2,LOW);
+#endif   
+#if defined(MOCOLUFA) || defined(USBMIDI)                 // MIDI message
+  NoteOn(OPTION_MIDI_PTT_NOTE, OPTION_MIDI_CW_CHANNEL);
+#endif    
+#ifdef TEENSYUSBAUDIOMIDI   
+  teensyusbaudiomidi.ptt(1);
+#endif  
 }
 
+//////////////////////////////////////////////////////////////////////////////
 //
 // "PTT off" action
 //
+//////////////////////////////////////////////////////////////////////////////
+
 void ptt_off() {
   if (!ptt_stat) return;
   ptt_stat=0;
   //
   // Actions: drop hardware line, send MIDI NoteOff message
   //
-  teensyusbaudiomidi.ptt(0);
-#ifdef PTTOUT
-    digitalWrite(PTTOUT, LOW);
+#ifdef PTT1
+  digitalWrite(PTT1,LOW);                                 // active high PTT line
 #endif
+#ifdef PTT2
+  digitalWrite(PTT2,HIGH);                                // active low PTT line
+#endif    
+#if defined(MOCOLUFA) || defined(USBMIDI)                  // MIDI message
+  NoteOff(OPTION_MIDI_PTT_NOTE, OPTION_MIDI_CW_CHANNEL);
+#endif   
+#ifdef TEENSYUSBAUDIOMIDI   
+  teensyusbaudiomidi.ptt(0);
+#endif  
 }
 
+//////////////////////////////////////////////////////////////////////////////
 //
 // clear ring buffer, clear pausing state
 //
+//////////////////////////////////////////////////////////////////////////////
+
 void clearbuf() {
   bufrx=buftx=bufcnt=0;
   pausing=0;
 }
 
+//////////////////////////////////////////////////////////////////////////////
 //
 // Insert zeroes, for pointer commands
 // This goes to ABSOLUTE POSITION
 //
+//////////////////////////////////////////////////////////////////////////////
+
 void bufzero(int len) {
   while (len--) {
     queue(1,0,0,0);
   }
 }
 
+//////////////////////////////////////////////////////////////////////////////
 //
 // Set buffer pointer to ABSOLUTE position
 // for pointer commands
 //
+//////////////////////////////////////////////////////////////////////////////
+
 void setbufpos(int pos) {
   buftx=pos;
 }
 
+//////////////////////////////////////////////////////////////////////////////
 //
 // queue up to 3 chars in character_buffer
 //
+//////////////////////////////////////////////////////////////////////////////
+
 void queue(int n, int a, int b, int c) {
   if (bufcnt + n > BUFLEN) return;
   character_buffer[buftx++]=a; if (buftx >= BUFLEN) buftx=0; bufcnt++;
@@ -568,9 +1050,12 @@ void queue(int n, int a, int b, int c) {
   if (bufcnt > BUFMARGIN) WKstatus |= 0x01;
 }
 
+//////////////////////////////////////////////////////////////////////////////
 //
 // remove last queued character
 //
+//////////////////////////////////////////////////////////////////////////////
+
 void backspace() {
   if (bufcnt < 1) return;
   buftx--;
@@ -579,9 +1064,12 @@ void backspace() {
   if (bufcnt <= BUFMARGIN) WKstatus &= 0xFE;
 }
 
+//////////////////////////////////////////////////////////////////////////////
 //
 // get next character from character_buffer
 //
+//////////////////////////////////////////////////////////////////////////////
+
 int FromBuffer() {
   int c;
   if (bufcnt < 1) return 0;
@@ -592,10 +1080,12 @@ int FromBuffer() {
   return c;
 }
 
+//////////////////////////////////////////////////////////////////////////////
 // Morse code for ASCII characters 33 - 90, from ITU-R M.1677-1
 // read from bit0 to bit7
 // 0 = dot, 1 = dash
 // highest bit set indicated end-of-character (not to be sent as a dash!)
+//////////////////////////////////////////////////////////////////////////////
 
 unsigned char morse[58] = {
    0x01,     //33 !    not in ITU-R M.1677-1
@@ -663,6 +1153,7 @@ unsigned char morse[58] = {
 // This is the Keyer state machine
 //
 ///////////////////////////////////////
+
 void keyer_state_machine() {
   int i;                        // general counter variable
   uint8_t byte;                 // general one-byte variable
@@ -721,16 +1212,16 @@ void keyer_state_machine() {
   //
   // PTT hang time from PTTtail.
   // If it is zero, or PTT not enabled, use hang bits
+  // Note: WK2.3 changed hang times
   //
   if (Tail != 0 && PTT_ENABLED) {
     hang=10*Tail;
   } else {
     switch (HANGBITS) {
-      case 0: hang = (21*dotlen)/3; break;     // 1.00 word spaces
-      case 1: hang = (28*dotlen)/3; break;     // 1.33 word spaces
-      case 2: hang = (35*dotlen)/3; break;     // 1.67 word spaces
-      case 3: hang = (42*dotlen)/3; break;     // 2.00 word spaces
-      default:hang = (30*dotlen)/3; break;     // cannot happen but makes compiler happy
+      case 0: hang =  8*dotlen; break;     // word space + 1 dot
+      case 1: hang =  9*dotlen; break;     // word space + 2 dots
+      case 2: hang = 11*dotlen; break;     // word space + 4 dots
+      case 3: hang = 15*dotlen; break;     // word space + 8 dots
     }
   }
 
@@ -744,11 +1235,12 @@ void keyer_state_machine() {
     keyer_state=CHECK;
     wait=actual+hang;
   }
-
   switch (keyer_state) {
     case CHECK:
+      // reset number of elements sent
+      num_elements=0;
       // wait = time when PTT is switched off
-      if (actual >= wait && PTT_ENABLED) ptt_off();
+      if (actual >= wait) ptt_off();
       if (collpos > 0 && actual > last + 2 * dotlen) {
         // a morse code pattern has been entered and the character is complete
         // echo it in ASCII on the display and on the serial line
@@ -812,6 +1304,7 @@ void keyer_state_machine() {
         dash_held=eff_kdash;
         wait=actual+dotlen;
         keydown();
+        num_elements++;
       }
       break;
     case STARTDASH:
@@ -822,6 +1315,7 @@ void keyer_state_machine() {
         dot_held=eff_kdot;
         wait=actual+dashlen;
         keydown();
+        num_elements++;
       }
       break;
     case STARTSTRAIGHT:
@@ -988,6 +1482,7 @@ void keyer_state_machine() {
 // This is the WinKey state machine
 //
 ///////////////////////////////////////
+
 void WinKey_state_machine() {
   uint8_t byte;
   static int OldWKstatus=-1;           // this is to detect status changes
@@ -1031,13 +1526,20 @@ void WinKey_state_machine() {
       // only dump bytes 0 through 15,
       // report the others being zero
       // Nothing must interrupt us, therefore no state machine
+      // at 1200 baud, each character has a mere transmission time
+      // of more than 8 msec, so do a pause of 12 msec after each
+      // character. Since a complete dump takes much time, check
+      // for incoming MIDI messages frequently.
+      //
       for (inum=0; inum<16; inum++) {
         ToHost(EEPROM.read(inum));
-        delay(20);
+        DrainMIDI();      
+        delay(12); // at 1200 baud, each character takes about 9 msec
       }
       for (inum=16; inum < 256; inum++) {
           ToHost(0);
-          delay(20);
+          DrainMIDI();        
+          delay(12);
       }
       winkey_state=FREE;
       break;
@@ -1045,15 +1547,19 @@ void WinKey_state_machine() {
       //
       // Load EEPROM command
       // nothing must interrupt us, hence no state machine
+      // no delay is required upon reading, but check for
+      // incoming MIDI messages frequently.
       //
       for (inum=0; inum<16; inum++) {
-        while (!Serial.available()) ;
+        while (!ByteAvailable()) ;
         byte=FromHost();
         EEPROM.update(inum, byte);
+        DrainMIDI();       
       }
       for (inum=16; inum<256; inum++) {
-        while (!Serial.available()) ;
+        while (!ByteAvailable()) ;
         byte=FromHost();
+        DrainMIDI();       
       }
       winkey_state=FREE;
       break;
@@ -1066,7 +1572,7 @@ void WinKey_state_machine() {
   // NOTE: process *all* ADMIN command even if hostmode is closed. For example,
   // fldigi sends "echo" first and then "open".
   //
-  if (Serial.available()) {
+  if (ByteAvailable()) {
     byte=FromHost();
 
     if (hostmode == 0 && winkey_state == FREE && byte != ADMIN) return;
@@ -1118,7 +1624,8 @@ void WinKey_state_machine() {
             break;
           case 3:     // Admin Close
             hostmode = 0;
-            write_to_eeprom();
+            // restore "standalone" settings from EEPROM
+            read_from_eeprom();
             winkey_state=FREE;
             break;
           case 4:     // Admin Echo
@@ -1133,6 +1640,8 @@ void WinKey_state_machine() {
             break;
           case 7:     // Admin DumpDefault
             // never used so I refrain from making an own "state" for this.
+            // we need no delays since the buffer should be able to hold 15
+            // bytes.
             ToHost(ModeRegister);
             ToHost(Speed);
             ToHost(Sidetone);
@@ -1170,7 +1679,9 @@ void WinKey_state_machine() {
       case SIDETONE:
         Sidetone=byte;
         myfreq=4000/(Sidetone & 0x0F);
-        teensyusbaudiomidi.sidetonefrequency(myfreq);
+#ifdef TEENSYUSBAUDIOMIDI          
+       teensyusbaudiomidi.sidetonefrequency(myfreq);
+#endif        
         winkey_state=FREE;
         break;
       case WKSPEED:
@@ -1215,21 +1726,21 @@ void WinKey_state_machine() {
         winkey_state=FREE;
         break;
       case TUNE:
-        // Do not bother about lead-in and tail times, but DO switch PTT
+        // use fixed lead-in/tail times with "busy waiting".
         if (byte) {
           clearbuf();
           tuning=1;
           if (PTT_ENABLED) {
             ptt_on();
-            delay(50);
+            delay(150);
           }
           keydown();
         } else {
           keyup();
           if (PTT_ENABLED) {
-            delay(10);
-            ptt_off();
-          }
+            delay(50);
+          }  
+          ptt_off();
           tuning=0;
         }
         winkey_state=FREE;
@@ -1263,7 +1774,9 @@ void WinKey_state_machine() {
           case  2:
             Sidetone=byte;
             myfreq=4000/(Sidetone & 0x0F);
-            teensyusbaudiomidi.sidetonefrequency(myfreq);
+#ifdef TEENSYUSBAUDIOMIDI              
+           teensyusbaudiomidi.sidetonefrequency(myfreq);
+#endif            
             break;
           case  3:
             Weight=byte;
@@ -1322,14 +1835,13 @@ void WinKey_state_machine() {
         break;
       case POINTER_1:
       case POINTER_2:
-         // not clear to me what to do
+         // set buffer position
          if (byte > 0) byte--;
          setbufpos(byte);
          winkey_state=FREE;
          break;
       case POINTER_3:
          // queue some NULLs
-         // not clear to me what to do
          bufzero(byte);
          winkey_state=FREE;
          break;
@@ -1409,65 +1921,76 @@ void WinKey_state_machine() {
 
 }
 
+//////////////////////////////////////////////////////////////////////////////
 //
 // function to debounce an analog input
 //
+//////////////////////////////////////////////////////////////////////////////
+
 void analogDebounce(unsigned long actual, int pin, unsigned long *debounce, int *value) {
   int i;
   int v=*value;
   if (actual < *debounce) return;
 
-  //
-  // The speed pots report fluctuating values if and analogRead is less
-  // than 200, therefore only the range 200-1000 is used and then
-  // remapped to 0-1000
-  //
   i=analogRead(pin); // 0 - 1023
-  if (i < 200) i=200;
-  if (i > 1000) i=1000;
-  i = (10*i - 2000)/8;  // 0-1000
+  //
+  // take care for some "quietness" at the ends of the interval
+  //
+  if (i <   16) i=0;
+  if (i > 1016) i=1023;
 
   //
   // We update the value if is has changed substantially, or if it has changed
   // and reached an end-point
   //
-  if (i > v + 50 || i < v - 50 || (i == 0 && v > 0) || (i == 1000 && v < 1000)) {
+  if ((i > v+50) || (i < v-50) || (i == 0 && v > 0) || (i == 1023 && v < 1023)) {
     *value=i;
     *debounce=actual+20;
   }
 }
 
+//////////////////////////////////////////////////////////////////////////////
 //
 // This is executed again and again at a high rate.
 // Most of the time, there will be nothing to do.
 //
+//////////////////////////////////////////////////////////////////////////////
+
 void loop() {
   int i;
   static uint8_t LoopCounter=0;
-static int SpeedPinValue=500;              // default value: mid position
-static int VolPinValue=550;                // default value
+  static int SpeedPinValue=500;              // default value: mid position
 #ifdef POTPIN
   static unsigned long SpeedDebounce=0;    // used for "debouncing" speed pot
-#endif
-#ifdef VOLPIN
-  static unsigned long VolDebounce=0;      // used for "debouncing" volume pot
 #endif
   static unsigned long DotDebounce=0;      // used for "debouncing" dot paddle contact
   static unsigned long DashDebounce=0;     // used for "debouncing" dash paddle contact
   static unsigned long StraightDebounce=0; // used for "debouncing" straight key contact
+#ifdef TEENSYUSBAUDIOMIDI
   static          int  OldVolume=-1;       // last used sidetone volume
+#endif  
 
+
+  //////////////////////////////////////////////////////////////////////////////
   //
   //
   // This sets the "now" time
   //
+  //////////////////////////////////////////////////////////////////////////////
+  
   actual=millis();
 
-
+  //////////////////////////////////////////////////////////////////////////////
   //
-  // Do all the debouncing. For the left/right contacts assign them to dit/dah or dah/dit
+  // Read digital and analog input lines with debouncing.
+  //
+  // For the left/right contacts assign them to dit/dah or dah/dit
   // depending on the ModeRegister. If state changes, set dot/dash memory.
   //
+  // Note that we are monitoring the lines at high speed thus need no
+  // interrupts
+  ///////////////////////////////////////////////////////////////////////////////
+  
   if (actual >= DotDebounce) {
     i=!digitalRead(PADDLE_SWAP ? PaddleRight : PaddleLeft);
     if (i != kdot) {
@@ -1479,6 +2002,7 @@ static int VolPinValue=550;                // default value
       }
     }
   }
+  
   if (actual >= DashDebounce) {
     i=!digitalRead(PADDLE_SWAP ? PaddleLeft : PaddleRight);
     if (i != kdash) {
@@ -1490,6 +2014,7 @@ static int VolPinValue=550;                // default value
       }
     }
   }
+  
 #ifdef StraightKey
   if (actual >= StraightDebounce) {
     i=!digitalRead(StraightKey);
@@ -1500,79 +2025,101 @@ static int VolPinValue=550;                // default value
   }
 #endif
 
+#ifdef POTPIN
+  //
+  // only query the potentiometer while the keyer is idle.
+  // This prevents speed changes within a letter, and also 
+  // makes the speed pot immune against RFI.
+  // However, sometimes one wants to adjust the speed pot while
+  // producing a long sequence of dots (or dahs) and then
+  // we have to adjust the speed. This is detected by num_elements.
+  //
+  if (keyer_state == CHECK || num_elements > 5) {
+    analogDebounce(actual, POTPIN, &SpeedDebounce, &SpeedPinValue);
+  }  
+#endif
+ 
+  /////////////////////////////////////////////////////////////////////////////////
+  //
+  // The bug and ultimatic modes are not implemented in the keyer.
+  // instead, we apply some logic to the "contact closures"
+  //
+  // So kdash and kdot reflect the "physical" state of the paddle
+  // contacts while eff_kdash and eff_kdot are the states as seen by
+  // the keyer.
+  //
+  // BUG MODE:
+  //     logical-OR the dash to the straight keyer contact,
+  //     and let the effective dash contact always "open"
+  //
+  // ULTIMATIC MODE:
+  //     never report "both contacts closed" to the keyer.
+  //     in this case, only the last-pressed contact wins.
+  //
+  /////////////////////////////////////////////////////////////////////////////////
 
-/////////////////////////////////////////////////////////////////////////////////
-//
-// The bug and ultimatic modes are not implemented in the keyer.
-// instead, we apply some logic to the "contact closures"
-//
-// So kdash and kdot reflect the "physical" state of the paddle
-// contacts while eff_kdash and eff_kdot are the states as seen by
-// the keyer.
-//
-// BUG MODE:
-//     logical-OR the dash to the straight keyer contact,
-//     and let the effective dash contact always "open"
-//
-// ULTIMATIC MODE:
-//     never report "both contacts closed" to the keyer.
-//     in this case, only the last-pressed contact wins.
-//
-/////////////////////////////////////////////////////////////////////////////////
+  eff_kdash=kdash;
+  eff_kdot=kdot;
 
-
-eff_kdash=kdash;
-eff_kdot=kdot;
-
-if (BUGMODE) {
-  straight |= kdash;
-  memdash=0;
-  eff_kdash=0;
-}
-
-if (ULTIMATIC && kdash && kdot) {
-  if (lastpressed) {
-    // last contact closed was dash, so do not report a closed dot contact upstream
-    eff_kdot=0;
-  } else {
-    // last contact closed was dot, so do not report a closed dash contact upstream
+  if (BUGMODE) {
+    straight |= kdash;
+    memdash=0;
     eff_kdash=0;
   }
-}
 
+  if (ULTIMATIC && kdash && kdot) {
+    if (lastpressed) {
+      // last contact closed was dash, so do not report a closed dot contact upstream
+      eff_kdot=0;
+    } else {
+      // last contact closed was dot, so do not report a closed dash contact upstream
+      eff_kdash=0;
+    }
+  }
 
-#ifdef POTPIN
-  analogDebounce(actual, POTPIN, &SpeedDebounce, &SpeedPinValue);
-#endif
-#ifdef VOLPIN
-  analogDebounce(actual, VOLPIN, &VolDebounce, &VolPinValue);
-#endif
+  // WK2.3 change: end "TUNE" mode if a paddle is pressed
+  if (tuning && (kdot || kdash)) {
+      keyup();
+      if (PTT_ENABLED) {
+        delay(50);
+      }  
+      ptt_off();
+      tuning=0;
+  }
 
-//
-// Distribute the remaining work across different executions of loop()
-//
+  /////////////////////////////////////////////////////////////////////////////////
+  //
+  // Distribute the remaining work across different executions of loop()
+  //
+  /////////////////////////////////////////////////////////////////////////////////
   switch (LoopCounter++) {
     case 0:
+      i = myspeed;  // save temporarily to detect speed changes
       myspeed= Speed;
       //
       // Update speed pot value (this is reported back by WinKey)
-      // and possibly current speed
+      // so we need this even if there is no speed pot.
       //
-      SpeedPot=(SpeedPinValue*WPMrange)/1000;
-#ifdef POTPIN
+      SpeedPot=(SpeedPinValue*WPMrange)/1023;  // 1023 is the maximum value returned by analogRead
       //
-      // If there is no potentiometer
+      // If speed is not fixed, adjust according to speed pot
+      // If there is no speed pot, speed can be adjusted by setting the MinWPM/WPMrange values
+      //
       if (Speed == 0) myspeed=MinWPM+SpeedPot;
-#endif
+#ifdef TEENSYUSBAUDIOMIDI 
+      if (i != myspeed) teensyusbaudiomidi.cwspeed(myspeed);
+#endif      
       break;
     case 2:
-      i=VolPinValue/50;
+#ifdef TEENSYUSBAUDIOMIDI 
       // set volume to zero if WinKey side tone is not enabled
-      if (!SIDETONE_ENABLED) i=0;
+      i=SIDETONE_ENABLED ? 15 : 0;
       if (i != OldVolume) {
-        OldVolume=i;
-        teensyusbaudiomidi.sidetonevolume(OldVolume);
+        // report only if volume has changed
+        OldVolume=i;        
+       teensyusbaudiomidi.sidetonevolume(OldVolume);       
       }
+#endif        
       break;
     case 4:
       //
@@ -1584,7 +2131,7 @@ if (ULTIMATIC && kdash && kdot) {
       //
       // This is for checking incoming MIDI messages
       //
-      teensyusbaudiomidi.loop();
+      DrainMIDI();   
       break;
     case 8:
       // here some debug code can be placed
