@@ -119,8 +119,8 @@ private:
     // In normal circumstances, these will be set very soon by the
     // caller of this class
     //
-    int default_freq = 800;                    // default side tone frequency
-    int default_level= 0.2;                    // default side tone volume
+    int  default_freq = 800;                   // default side tone frequency
+    float default_level= 0.2;                  // default side tone volume
 
     int mute_on_ptt  = 0;                      // If set, Audio from PC is muted while PTT is set
 
