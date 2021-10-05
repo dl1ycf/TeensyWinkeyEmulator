@@ -20,6 +20,12 @@
  * THE SOFTWARE.
  */
 
+//
+// This ifndef allows this module being compiled on an Arduino etc.,
+// although it offers no function there. Why do we do this? If this
+// module is in the src directory, the Arduino IDE will compile it even
+// if it is not used.
+//
 #ifndef __AVR__
 
 #include <Arduino.h>
@@ -37,16 +43,6 @@ void TeensyUSBAudioMidi::setup(void)
     if (sgtl5000) {
       sgtl5000->enable();
       sgtl5000->volume(0.8);
-    }
-
-    if (tx1_line > 0) {
-      pinMode (tx1_line, OUTPUT);
-      digitalWrite (tx1_line, LOW);
-    }
-
-    if (tx2_line > 0) {
-      pinMode (tx2_line, OUTPUT);
-      digitalWrite (tx2_line, HIGH);
     }
 
     AudioInterrupts();
@@ -129,35 +125,15 @@ void TeensyUSBAudioMidi::cwspeed(int speed)
 void TeensyUSBAudioMidi::key(int state)
 {
     //
-    // Do not set the tone if volume is essentially zero
+    // If side tone is switched off (volume is zero), then
+    // do not send "our" side tone
     //
-    int do_midi=midi_cw >= 0 && midi_chan >= 0;
-
     if (sine_level > 0.001) {
       teensyaudiotone.setTone(state);
     }
-    if (state) {
-        if (do_midi) {
-          usbMIDI.sendNoteOn(midi_cw, 127, midi_chan);
-          usbMIDI.send_now();
-        }
-        if (tx1_line > 0) {
-          digitalWrite (tx1_line,HIGH);
-        }
-        if (tx2_line > 0) {
-          digitalWrite (tx1_line, LOW);
-        }
-    } else {
-        if (do_midi) {
-          usbMIDI.sendNoteOff(midi_cw, 0, midi_chan);
-          usbMIDI.send_now();
-        }
-        if (tx1_line > 0) {
-          digitalWrite (tx1_line, LOW);
-        }
-        if (tx2_line > 0) {
-          digitalWrite (tx2_line, HIGH);
-        }
+    if (midi_cw >= 0 && midi_chan >= 0) {
+       usbMIDI.sendNoteOn(midi_cw, state ? 127 : 0, midi_chan);
+       usbMIDI.send_now();
     }
 }
 
@@ -170,11 +146,7 @@ void TeensyUSBAudioMidi::ptt(int state)
       teensyaudiotone.muteAudioIn(state);
     }
     if (midi_ptt >= 0 && midi_chan >= 0) {
-      if (state) {
-        usbMIDI.sendNoteOn(midi_ptt, 127, midi_chan);
-      } else {
-        usbMIDI.sendNoteOff(midi_ptt, 0, midi_chan);
-      }
+      usbMIDI.sendNoteOn(midi_ptt, state ? 127 : 0, midi_chan);
       usbMIDI.send_now();
     }
 }
@@ -182,9 +154,8 @@ void TeensyUSBAudioMidi::ptt(int state)
 void TeensyUSBAudioMidi::sidetonevolume(int level) 
 {
   //
-  // level is the analog value (0-1023) produced by the volume pot.
-  // it is converted to the range 0-20 and then the amplitude is
-  // taken from VolTab
+  // The input value (level) is in the range 0-20 and converted to
+  // an amplitude using the (logarithmic table) VolTab.
   //
   if (level <  0) level=0;
   if (level > 20) level=20;

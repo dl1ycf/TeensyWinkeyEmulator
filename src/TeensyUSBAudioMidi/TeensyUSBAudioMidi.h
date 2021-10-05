@@ -33,8 +33,7 @@ class TeensyUSBAudioMidi
 {
 public:
     TeensyUSBAudioMidi(int cw, int ptt, int spd, int chan, int ctrl,
-                       int pttmute, int tx1, int tx2, int i2s,
-                       int freq, double vol) :
+                       int pttmute, int i2s, int freq, double vol) :
     sine(),
     usbaudioinput(),
     teensyaudiotone(),
@@ -52,8 +51,6 @@ public:
       midi_ctrl    = ctrl;
 
       mute_on_ptt  = pttmute;
-      tx1_line     = tx1;
-      tx2_line     = tx2;
 
       default_freq  = freq;
       default_level = vol;
@@ -110,9 +107,6 @@ private:
     int midi_speed = -1;                       // MIDI (controller) note for reporting CW speed
     int midi_chan  = -1;                       // MIDI channel for output to SDR program
     int midi_ctrl  = -1;                       // MIDI channel for input from Computer
-
-    int tx1_line   = -1;                       // if use this for active-high CW
-    int tx2_line   = -1;                       // if use this for active-low CW
 
     //
     // Initial side tone frequency and volume.

@@ -20,6 +20,12 @@
  * THE SOFTWARE.
  */
 
+//
+// This ifndef allows this module being compiled on an Arduino etc.,
+// although it offers no function there. Why do we do this? If this
+// module is in the src directory, the Arduino IDE will compile it even
+// if it is not used.
+//
 #ifndef __AVR__
 
 #include <Arduino.h>

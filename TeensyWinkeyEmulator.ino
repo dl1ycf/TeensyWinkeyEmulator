@@ -593,16 +593,15 @@ static uint8_t cw_stat=0;    // current CW output line status
 
 #ifdef TEENSYUSBAUDIOMIDI
 
-TeensyUSBAudioMidi teensyusbaudiomidi(OPTION_MIDI_CW_NOTE,
-                                      OPTION_MIDI_PTT_NOTE,
-                                      OPTION_MIDI_SPEED_CTRL,
-                                      OPTION_MIDI_CW_CHANNEL,
-                                      OPTION_MIDI_CONTROL_CHANNEL,
-                                      OPTION_MUTE_ON_PTT,
-                                      0, 0,    // do not use tx1 and tx2 lines in teensyusbaudiomidi
-                                      OPTION_AUDIO_USE_I2S,
-                                      OPTION_SIDETONE_FREQ,
-                                      OPTION_SIDETONE_VOLUME);
+TeensyUSBAudioMidi teensyusbaudiomidi(MIDI_CW_NOTE,
+                                      MIDI_PTT_NOTE,
+                                      MIDI_SPEED_CTRL,
+                                      MIDI_CW_CHANNEL,
+                                      MIDI_CONTROL_CHANNEL,
+                                      MUTE_ON_PTT,
+                                      AUDIO_USE_I2S,
+                                      SIDETONE_FREQ,
+                                      SIDETONE_VOLUME);
                                       
 #endif
 
@@ -909,7 +908,7 @@ void keydown() {
   digitalWrite(CW2,LOW);
 #endif      
 #if defined(MOCOLUFA) || defined(USBMIDI)               // MIDI message
-  NoteOn(OPTION_MIDI_CW_NOTE, OPTION_MIDI_CW_CHANNEL);
+  NoteOn(MIDI_CW_NOTE, MIDI_CW_CHANNEL);
 #endif  
 #ifdef TEENSYUSBAUDIOMIDI                               // MIDI and sidetone
  teensyusbaudiomidi.key(1);
@@ -938,7 +937,7 @@ void keyup() {
   digitalWrite(CW2,HIGH);                               // active-low CW output
 #endif      
 #if defined(MOCOLUFA) || defined(USBMIDI)               // MIDI message
-  NoteOff(OPTION_MIDI_CW_NOTE, OPTION_MIDI_CW_CHANNEL);
+  NoteOff(MIDI_CW_NOTE, MIDI_CW_CHANNEL);
 #endif    
 #ifdef TEENSYUSBAUDIOMIDI                               // MIDI and side tone
  teensyusbaudiomidi.key(0);
@@ -964,7 +963,7 @@ void ptt_on() {
   digitalWrite(PTT2,LOW);
 #endif   
 #if defined(MOCOLUFA) || defined(USBMIDI)                 // MIDI message
-  NoteOn(OPTION_MIDI_PTT_NOTE, OPTION_MIDI_CW_CHANNEL);
+  NoteOn(MIDI_PTT_NOTE, MIDI_CW_CHANNEL);
 #endif    
 #ifdef TEENSYUSBAUDIOMIDI   
   teensyusbaudiomidi.ptt(1);
@@ -990,7 +989,7 @@ void ptt_off() {
   digitalWrite(PTT2,HIGH);                                // active low PTT line
 #endif    
 #if defined(MOCOLUFA) || defined(USBMIDI)                  // MIDI message
-  NoteOff(OPTION_MIDI_PTT_NOTE, OPTION_MIDI_CW_CHANNEL);
+  NoteOff(MIDI_PTT_NOTE, MIDI_CW_CHANNEL);
 #endif   
 #ifdef TEENSYUSBAUDIOMIDI   
   teensyusbaudiomidi.ptt(0);
