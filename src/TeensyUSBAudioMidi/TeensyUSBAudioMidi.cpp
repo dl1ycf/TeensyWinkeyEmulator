@@ -147,7 +147,6 @@ void TeensyUSBAudioMidi::ptt(int state)
     }
     if (midi_ptt >= 0 && midi_chan >= 0) {
       usbMIDI.sendNoteOn(midi_ptt, state ? 127 : 0, midi_chan);
-      usbMIDI.send_now();
     }
 }
 
