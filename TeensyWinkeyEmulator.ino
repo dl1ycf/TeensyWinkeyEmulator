@@ -686,15 +686,17 @@ void read_from_eeprom() {
 //
 // If magic bytes are not found, nothing is done.
 //
-  uint8_t i;
 
 
   Speed = 0;  // switch to speed pot
   if (EEPROM.read(0) == MAGIC && EEPROM.read(15) == 0) {
      ModeRegister = EEPROM.read( 1);
 #ifndef POTPIN
-     i            = EEPROM.read( 2);  // restore speed (only) if there is no speed pot
-     if (i >= 5 && i <= 40) Speed=i;  // and if stored value is between 5 and 40 wpm
+     {
+        uint8_t i;
+        i            = EEPROM.read( 2);  // restore speed (only) if there is no speed pot
+        if (i >= 5 && i <= 40) Speed=i;  // and if stored value is between 5 and 40 wpm
+     }  
 #endif     
      Sidetone     = EEPROM.read( 3);
      Weight       = EEPROM.read( 4);
@@ -2112,7 +2114,7 @@ void loop() {
     case 2:
 #ifdef TEENSYUSBAUDIOMIDI 
       // set volume to zero if WinKey side tone is not enabled
-      i=SIDETONE_ENABLED ? 15 : 0;
+      i=SIDETONE_ENABLED ? 12 : 0;
       if (i != OldVolume) {
         // report only if volume has changed
         OldVolume=i;        
