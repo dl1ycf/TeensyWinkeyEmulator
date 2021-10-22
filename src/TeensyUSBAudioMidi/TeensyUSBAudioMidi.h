@@ -81,8 +81,8 @@ public:
 
 
 private:
-    AudioInputUSB           usbaudioinput;      // Audio in from Computer
     AudioSynthWaveformSine  sine;               // free-running side tone oscillator
+    AudioInputUSB           usbaudioinput;      // Audio in from Computer
     TeensyAudioTone         teensyaudiotone;    // Side tone mixer
     AudioConnection         patchinl;           // Cable "L" from Audio-in to side tone mixer
     AudioConnection         patchinr;           // Cable "R" from Audio-in to side tone mixer
