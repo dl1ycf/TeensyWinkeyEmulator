@@ -1,7 +1,3 @@
-
-
-#define MYCONFIG_TEENSY4  // use one of the pre-defined scenarios
-
 ////////////////////////////////////////////////////////////////////////////////////////
 //
 // Teensy keyer with audio (WinKey emulator)
@@ -12,36 +8,13 @@
 //
 // It can make use of the "MIDI" features of the Teensy 2.0 and 4.0
 // It can make use of the "AUDIO" features of Teensy 4.0
-// There are some basic #define's here at the beginning of the file
+// There are some basic #define's in the file config.h
 // which control which "backends" are used for signalling key-up/down and
 // PTT on/off events, and the way to produce a side tone. This choice
 // also affects which Serial module can be used. 
 //
-// The possible #defines are explained here
-//
-// HWSERIAL             The WinKey protocol is excecuted over the hardware serial line.
-//
-// SWSERIAL             The WinKey protocol is executed over a software serial line.
-//                      This requires definition of RXD and TXD pins.
-//
-// SERIAL1              The Winkey protocol is executed over the built-in UART
-//                      that does not go to USB (Teensy only)
-//
-// TEENSYUSBAUDIOMIDI   If this is defined, the "TeensyUSBAudioMIDI" class is used, and
-//                      this module takes care about MIDI messages and side tone.
-//                      This requires a Teensy3 or a Teensy4.
-//
-// USBMIDI              If this is defined, MIDI events are generated using the usbMIDI
-//                      class. This is then handled within this documents. Do not define
-//                      together with TEENSYUSBAUDIOMIDI. This requires a Teensy 2/3/4,
-//                      or an 32U4 based Arduino such as the ArduinoMicro.
-//
-// MOCOLUFA             If this is defined, MIDI events are sent via the hardware serial
-//                      port. On Arduinos with a 16U2 co-processer taking care of the USB
-//                      connection, the 16U2 can be re-programmed such that the Arduino
-//                      shows up as a MIDI device.
 // 
-// Incompatible options:
+// Incompatible options (to be removed below):
 //
 // -  HWSERIAL overrides SWSERIAL and SERIAL1.
 // -  SWSERIAL overrides SERIAL1
@@ -49,157 +22,15 @@
 // -  USBMIDI overrides MOCOLUFA
 // -  MOCOLUFA disables HWSERIAL
 //
-// The program probably does not compile on a non-Teensy if SERIAL1 is used                     
+// The program probably does not compile on a non-Teensy if SERIAL1 is used.
 //
+// File config.h also defines the hardware pins (digital input, digital output,
+// analog input) to be used. Note that when using TEENSYUSBAUDIOMIDI, no analog
+// inputs are handled in this file.                    
 //
-// For convenience, we list some combinations suitable for different hardware:
-//
-// a) plain vanilla Arduino, not using MIDI but the serial WinKey protocol:
-//
-//    #define HWSERIAL
-//    #undef  SWSERIAL
-//    #undef  SERIAL1
-//    #undef  TEENSYUSBAUDIOMIDI
-//    #undef  USBMIDI
-//    #undef  MOCOLUFA
-//
-// b) Arduino with MIDI firmware on the 16U2, using MIDI but not the WinKey protocol
-//
-//    #undef  HWSERIAL
-//    #undef  SWSERIAL
-//    #undef  SERIAL1
-//    #undef  TEENSYUSBAUDIOMIDI
-//    #undef  USBMIDI
-//    #define MOCOLUFA
-//
-// c) Arduino with MIDI firmware on the 16U2, using MIDI and WinKey over software serial line:
-//
-//    #undef  HWSERIAL
-//    #define SWSERIAL
-//    #undef  SERIAL1
-//    #undef  TEENSYUSBAUDIOMIDI
-//    #undef  USBMIDI
-//    #define MOCOLUFA
-//
-// d) Teensy 2.0, using USB MIDI but no WinKey protocol
-//
-//    #undef  HWSERIAL
-//    #undef  SERIAL1
-//    #undef  TEENSYUSBAUDIOMIDI
-//    #define USBMIDI
-//    #undef  MOCOLUFA
-//
-// e) Teensy 2.0, using USB MIDI and WinKey over built-in
-//    UART (pins 7 and 8)
-//
-//    #undef  HWSERIAL
-//    #undef  SWSERIAL
-//    #define SERIAL1
-//    #undef  TEENSYUSBAUDIOMIDI
-//    #define USBMIDI
-//    #undef  MOCOLUFA
-//
-// f) Teensy 3.0 or 4.0, using Serial+MIDI over USB but no high quality audio
-//
-//    #define HWSERIAL
-//    #undef  SWSERIAL
-//    #undef  SERIAL1
-//    #undef TEENSYUSBAUDIOMIDI
-//    #define USBMIDI
-//    #undef  MOCOLUFA
-//
-// g) Teensy 3.0 or 4.0, using Serial+MIDI+Audio
-//
-//    #define HWSERIAL
-//    #undef  SWSERIAL
-//    #undef  SERIAL1
-//    #define TEENSYUSBAUDIOMIDI
-//    #undef  USBMIDI
-//    #undef  MOCOLUFA
-////////////////////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////////////////////
 
 #include "config.h"
-
-#ifdef  MYCONFIG_TEENSY2
-#undef  HWSERIAL
-#undef  SWSERIAL
-#define SERIAL1
-#undef  TEENSYUSBASUDIOMIDI
-#define USBMIDI
-#undef  MOCOLUFA
-#endif
-
-#ifdef  MYCONFIG_TEENSY4
-#define HWSERIAL
-#undef  SWSERIAL
-#undef  SERIAL1
-#define TEENSYUSBAUDIOMIDI
-#undef  USBMIDI
-#undef  MOCOLUFA
-#endif
-
-#ifdef  MYCONFIG_ARDUINO_NOMIDI
-#define HWSERIAL
-#undef  SWSERIAL
-#undef  SERIAL1
-#undef  MOCOLUFA
-#undef  USBMIDI
-#undef  TEENSYUSBAUDIOMIDI
-#endif
-
-#ifdef  MYCONFIG_ARDUNIO_MOCOLUFA
-#undef  HWSERIAL
-#undef  SWSERIAL
-#undef  SERIAL1
-#define MOCOLUFA
-#undef  USBMIDI
-#undef  TEENSYUSBAUDIOMIDI
-#endif
-
-////////////////////////////////////////////////////////////////////////////////////////
-//
-// Hardware pins
-//
-// Here we define the hardware pins to be used. Note that with TEENSYUSBAUDIOMIDI
-// and when using the Teensy Audio Shield, many hardware lines are reserved for 
-// I2S audio communication. However, using pins 0,1,2,3,4 is safe also there.
-//
-// Note further that on Arduino's one cannot use pins 0,1 since these are used for
-// the hardware serial line.
-//
-////////////////////////////////////////////////////////////////////////////////////////
-
-#ifdef MYCONFIG_TEENSY2
-#define PaddleRight         1      // input for right paddle
-#define PaddleLeft          0      // input for left paddle
-#define StraightKey         2      // input for straight key
-
-#define CW1                 12      // Key out (active high)
-#define PTT1                14      // PTT out (active high)
-#define PTT2                15      // PTT out (active low)
-#define TONEPIN             16      // used for square wave side tone
-#endif
-
-#ifdef MYCONFIG_TEENSY4
-#define PaddleRight         1      // input for right paddle
-#define PaddleLeft          0      // input for left paddle
-#define StraightKey         2      // input for straight key
-
-#define CW1                 4      // Key out (active high)
-#define PTT1                5      // PTT out (active high)
-#define POTPIN              A2     // Analog input for speed pot
-#endif
-
-#if defined(MYCONFIG_ARDUINO_NOMIDI) || defined(MYCONFIG_ARDUINO_MOCOLUFA)
-#define PaddleRight         3      // input for right paddle
-#define PaddleLeft          2      // input for left paddle
-#define StraightKey         4      // input for straight key
-
-#define CW1                 6       // Key out (active high)
-#define PTT1                7       // PTT out (active high)
-#define PTT2                8       // PTT out (active low)
-#define TONEPIN             9       // used for square wave side tone
-#endif
 
 ////////////////////////////////////////////////////////////////////////////////////////
 //
@@ -210,10 +41,15 @@
 #ifdef TEENSYUSBAUDIOMIDI
 #undef USBMIDI
 #undef MOCOLUFA
+#undef POTPIN
 #endif
 
 #ifdef USBMIDI
 #undef MOCOLUFA
+#endif
+
+#ifdef MOCOLUFA
+#undef HWSERIAL
 #endif
 
 #ifdef HWSERIAL
@@ -221,12 +57,12 @@
 #undef SERIAL1
 #endif
 
-#ifdef SWSERIAL
-#undef SERIAL1
-#endif
-
 #if !defined(RXD_PIN) || !defined(TXD_PIN)
 #undef SWSERIAL
+#endif
+
+#ifdef SWSERIAL
+#undef SERIAL1
 #endif
 
 ////////////////////////////////////////////////////////////////////////////////////////
@@ -456,6 +292,7 @@ enum WKSTAT {
 
 static uint8_t ModeRegister=0x54;       // echos, no swap, Iambic-A by default
 static uint8_t Speed=21;                // overridden by the speed pot in standalong mode
+static uint8_t HostSpeed=0;             // if nonzero, it overrides other speed settings
 static uint8_t Sidetone=5;              // 800 Hz
 static uint8_t Weight=50;               // used to modify dit/dah length
 static uint8_t LeadIn=15;               // PTT Lead-in time (in units of 10 ms)
@@ -593,15 +430,30 @@ static uint8_t cw_stat=0;    // current CW output line status
 
 #ifdef TEENSYUSBAUDIOMIDI
 
+void speed_set(int teensyspeed) {
+  //
+  // Interface to let the TeensyUSBAudioMidi class
+  // set the CW speed. Such a change may arise from
+  // a speed pot monitored by TeensyUSBAudioMidi or
+  // from a MIDI message arriving there.
+  //
+  Speed=teensyspeed;
+}
+
 TeensyUSBAudioMidi teensyusbaudiomidi(MIDI_CW_NOTE,
                                       MIDI_PTT_NOTE,
                                       MIDI_SPEED_CTRL,
+                                      MIDI_PITCH_CTRL,
                                       MIDI_CW_CHANNEL,
                                       MIDI_CONTROL_CHANNEL,
                                       MUTE_ON_PTT,
-                                      AUDIO_USE_I2S,
+                                      AUDIO_OUTPUT,
                                       SIDETONE_FREQ,
-                                      SIDETONE_VOLUME);
+                                      SIDETONE_VOLUME,
+                                      TEENSY_ANALOG_SIDEVOL,
+                                      TEENSY_ANALOG_SIDEFREQ,
+                                      TEENSY_ANALOG_MASTERVOL,
+                                      TEENSY_ANALOG_SPEED);
                                       
 #endif
 
@@ -686,18 +538,13 @@ void read_from_eeprom() {
 //
 // If magic bytes are not found, nothing is done.
 //
+  uint8_t i;
 
 
-  Speed = 0;  // switch to speed pot
   if (EEPROM.read(0) == MAGIC && EEPROM.read(15) == 0) {
      ModeRegister = EEPROM.read( 1);
-#ifndef POTPIN
-     {
-        uint8_t i;
-        i            = EEPROM.read( 2);  // restore speed (only) if there is no speed pot
-        if (i >= 5 && i <= 40) Speed=i;  // and if stored value is between 5 and 40 wpm
-     }  
-#endif     
+     i            = EEPROM.read( 2);
+     if (i >= 5 && i <= 40) Speed=i;  
      Sidetone     = EEPROM.read( 3);
      Weight       = EEPROM.read( 4);
      LeadIn       = EEPROM.read( 5);
@@ -756,19 +603,6 @@ void init_eeprom() {
   }
 }
 
-//////////////////////////////////////////////////////////////////////////////
-//
-// "hook" for teensyusbaudio to set the speed, if such a settings
-// is received via MIDI commands
-//
-//////////////////////////////////////////////////////////////////////////////
-#ifdef TEENSYUSBMIDIAUDIO
-void speed_set(int val)
-{
-  Speed=val;
-}
-#endif
-
 
 //////////////////////////////////////////////////////////////////////////////
 //
@@ -778,7 +612,7 @@ void speed_set(int val)
 //////////////////////////////////////////////////////////////////////////////
 
 void DrainMIDI() {
-#ifdef TEENSYUSBMIDIAUDIO
+#ifdef TEENSYUSBAUDIOMIDI
     teensyusbaudiomidi.loop();
 #endif
 #ifdef USBMIDI
@@ -1616,6 +1450,7 @@ void WinKey_state_machine() {
             winkey_state=FREE;
             read_from_eeprom();
             hostmode=0;
+            HostSpeed=0;
             break;
           case 2:     // Admin Open
             // OPEN
@@ -1625,6 +1460,7 @@ void WinKey_state_machine() {
             break;
           case 3:     // Admin Close
             hostmode = 0;
+            HostSpeed = 0; 
             // restore "standalone" settings from EEPROM
             read_from_eeprom();
             winkey_state=FREE;
@@ -1644,7 +1480,7 @@ void WinKey_state_machine() {
             // we need no delays since the buffer should be able to hold 15
             // bytes.
             ToHost(ModeRegister);
-            ToHost(Speed);
+            ToHost(HostSpeed);
             ToHost(Sidetone);
             ToHost(Weight);
             ToHost(LeadIn);
@@ -1679,14 +1515,11 @@ void WinKey_state_machine() {
         break;
       case SIDETONE:
         Sidetone=byte;
-        myfreq=4000/(Sidetone & 0x0F);
-#ifdef TEENSYUSBAUDIOMIDI          
-       teensyusbaudiomidi.sidetonefrequency(myfreq);
-#endif        
+        myfreq=4000/(Sidetone & 0x0F);       
         winkey_state=FREE;
         break;
       case WKSPEED:
-        Speed=byte;
+        HostSpeed=byte;
         winkey_state=FREE;
         break;
       case WEIGHT:
@@ -1770,14 +1603,11 @@ void WinKey_state_machine() {
             ModeRegister=byte;
             break;
           case  1:
-            Speed=byte;
+            HostSpeed=byte;
             break;
           case  2:
             Sidetone=byte;
-            myfreq=4000/(Sidetone & 0x0F);
-#ifdef TEENSYUSBAUDIOMIDI              
-           teensyusbaudiomidi.sidetonefrequency(myfreq);
-#endif            
+            myfreq=4000/(Sidetone & 0x0F);         
             break;
           case  3:
             Weight=byte;
@@ -1927,28 +1757,18 @@ void WinKey_state_machine() {
 // function to debounce an analog input
 //
 //////////////////////////////////////////////////////////////////////////////
-
 void analogDebounce(unsigned long actual, int pin, unsigned long *debounce, int *value) {
   int i;
-  int v=*value;
+  
   if (actual < *debounce) return;
+  *debounce=actual+20;
 
   i=analogRead(pin); // 0 - 1023
-  //
-  // take care for some "quietness" at the ends of the interval
-  //
-  if (i <   16) i=0;
-  if (i > 1016) i=1023;
-
-  //
-  // We update the value if is has changed substantially, or if it has changed
-  // and reached an end-point
-  //
-  if ((i > v+50) || (i < v-50) || (i == 0 && v > 0) || (i == 1023 && v < 1023)) {
-    *value=i;
-    *debounce=actual+20;
-  }
+  
+  *value = (15 * *value / 16 + i) ;  // output value in the range 0 - 16368
 }
+  
+
 
 //////////////////////////////////////////////////////////////////////////////
 //
@@ -1960,15 +1780,15 @@ void analogDebounce(unsigned long actual, int pin, unsigned long *debounce, int 
 void loop() {
   int i;
   static uint8_t LoopCounter=0;
-  static int SpeedPinValue=500;              // default value: mid position
 #ifdef POTPIN
+  static int SpeedPinValue=8000;           // default value: mid position
   static unsigned long SpeedDebounce=0;    // used for "debouncing" speed pot
 #endif
   static unsigned long DotDebounce=0;      // used for "debouncing" dot paddle contact
   static unsigned long DashDebounce=0;     // used for "debouncing" dash paddle contact
   static unsigned long StraightDebounce=0; // used for "debouncing" straight key contact
 #ifdef TEENSYUSBAUDIOMIDI
-  static          int  OldVolume=-1;       // last used sidetone volume
+  static uint8_t old_sidetone_enabled = 1;
 #endif  
 
 
@@ -2095,31 +1915,40 @@ void loop() {
   /////////////////////////////////////////////////////////////////////////////////
   switch (LoopCounter++) {
     case 0:
-      i = myspeed;  // save temporarily to detect speed changes
-      myspeed= Speed;
-      //
-      // Update speed pot value (this is reported back by WinKey)
-      // so we need this even if there is no speed pot.
-      //
-      SpeedPot=(SpeedPinValue*WPMrange)/1023;  // 1023 is the maximum value returned by analogRead
-      //
-      // If speed is not fixed, adjust according to speed pot
-      // If there is no speed pot, speed can be adjusted by setting the MinWPM/WPMrange values
-      //
-      if (Speed == 0) myspeed=MinWPM+SpeedPot;
-#ifdef TEENSYUSBAUDIOMIDI 
-      if (i != myspeed) teensyusbaudiomidi.cwspeed(myspeed);
-#endif      
+       //
+       // Adjust CW speed
+       //
+#ifdef POTPIN
+      SpeedPot=(SpeedPinValue*WPMrange+8180)/16368; // between 0 and WPMrange
+      Speed=MinWPM+SpeedPot;
+#else
+       //
+       // If there is no speed pot, or speed pot is handled externally,
+       // compute a "virtual" SpeedPot value since reporting this back
+       // is part of the WK protocol
+       //
+       if (keyer_state == CHECK || num_elements > 5) myspeed=Speed; // do not change speed in the midst of a letter
+       SpeedPot = Speed - MinWPM; // maintain "virtual" value of speed pot
+       if (SpeedPot > 31) SpeedPot=31;
+#endif       
+       //
+       // HostMode speed overrides "local" speed
+       //
+       if (HostSpeed == 0) {
+         myspeed=Speed;
+       } else {
+         myspeed=HostSpeed;       
+       }
       break;
     case 2:
-#ifdef TEENSYUSBAUDIOMIDI 
-      // set volume to zero if WinKey side tone is not enabled
-      i=SIDETONE_ENABLED ? 12 : 0;
-      if (i != OldVolume) {
-        // report only if volume has changed
-        OldVolume=i;        
-       teensyusbaudiomidi.sidetonevolume(OldVolume);       
-      }
+       //
+       // Report side tone enable etc. to upstream software
+       //
+#ifdef TEENSYUSBAUDIOMIDI    
+       if (old_sidetone_enabled != SIDETONE_ENABLED) {
+          old_sidetone_enabled = SIDETONE_ENABLED;
+          teensyusbaudiomidi.sidetoneenable(old_sidetone_enabled);
+       }      
 #endif        
       break;
     case 4:
@@ -2131,17 +1960,14 @@ void loop() {
     case 6:
       //
       // This is for checking incoming MIDI messages
+      // (TeensyUSBAudioMidi also monitors potentiometers)
       //
       DrainMIDI();   
-      break;
-    case 8:
-      // here some debug code can be placed
       break;
     case 1:
     case 3:
     case 5:
     case 7:
-    case 9:
       //
       // execute the keyer state machine every second loop
       //
