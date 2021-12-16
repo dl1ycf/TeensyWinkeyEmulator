@@ -150,7 +150,7 @@ void TeensyAudioTone::update(void)
     // if allocation of block_sidetone constantly fails.
     //
     block_sidetone=NULL;
-    if ((tone || windowindex || mute) && block_sine) {
+    if ((tone || windowindex || mute) && block_sine && sidetone_enabled) {
       block_sidetone=allocate();
     }
 

@@ -34,6 +34,7 @@ class TeensyAudioTone : public AudioStream
 {
 public:
     TeensyAudioTone() : AudioStream(3, inputQueueArray) {
+        sidetone_enabled = 1;
         tone = 0;
         mute = 0;
         windowindex = 0;
@@ -43,6 +44,9 @@ public:
 
     void setTone(uint8_t state) {
         tone = state;
+    }
+    void sidetoneenable(uint8_t state) {
+      sidetone_enabled = state;
     }
 
     void muteAudioIn(uint8_t state) {
@@ -55,6 +59,7 @@ public:
 private:
     audio_block_t *inputQueueArray[3];
 
+    uint8_t  sidetone_enabled;
     uint8_t  tone;         // tone on/off flag
     uint8_t  mute;         // mute on/off flag
     uint8_t  windowindex;  // pointer into the "ramp"
