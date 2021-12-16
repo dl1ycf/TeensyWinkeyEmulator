@@ -32,8 +32,9 @@
 class TeensyUSBAudioMidi
 {
 public:
-    TeensyUSBAudioMidi(int cw, int ptt, int spd, int chan, int ctrl,
-                       int pttmute, int i2s, int freq, double vol) :
+    TeensyUSBAudioMidi(int cw, int ptt, int spd, int pitch, int chan, int ctrl,
+                       int pttmute, int i2s, int freq, double vol,
+                       int pin_sidevol, int pin_sidefreq, int pin_mastervol, int pin_speed) :
     sine(),
     usbaudioinput(),
     teensyaudiotone(),
@@ -47,6 +48,7 @@ public:
       midi_cw      = cw;
       midi_ptt     = ptt;
       midi_speed   = spd;
+      midi_pitch   = pitch;
       midi_chan    = chan;
       midi_ctrl    = ctrl;
 
@@ -55,14 +57,33 @@ public:
       default_freq  = freq;
       default_level = vol;
 
+      Pin_SideToneFrequency = pin_sidefreq;
+      Pin_SideToneVolume    = pin_sidevol;
+      Pin_MasterVolume      = pin_mastervol;
+      Pin_Speed             = pin_speed;
+
       //
-      // Set up I2S (SGTL5000) or MQS audio output
+      // Audio output. The audio output method is encoded in the i2s variable:
       //
-      if (i2s) {
-        audioout  = new AudioOutputI2S;
-        sgtl5000  = new AudioControlSGTL5000;
-      } else {
-        audioout  = new AudioOutputMQS;
+      // i2s = 0:	MQS audio output, no master volume control
+      // i2s = 1:	I2S audio output, assuming a WM8960   device
+      // i2s = 2:       I2S audio output, assuming a SGTL5100 device
+      //
+      // use MQS as the default if an illegal value has been given
+      //
+      switch (i2s) {
+        case 0:
+        default:
+	  audioout = new AudioOutputMQS;
+          break;
+        case 1:
+          audioout  = new AudioOutputI2S;
+          wm8960    = new AudioControlWM8960;
+          break;
+        case 2:
+          audioout  = new AudioOutputI2S;
+          sgtl5000  = new AudioControlSGTL5000;
+          break;
       }
       //
       // Solder cables from teensyaudioton to the just-initialized audio output
@@ -71,13 +92,18 @@ public:
       patchoutr = new AudioConnection(teensyaudiotone, 1, *audioout,        1);
     }
 
-    void setup(void);                           // to be executed once upon startup
-    void loop(void);                            // to be executed at each heart beat
-    void cwspeed(int speed);                    // send CW speed event
-    void key(int state);                        // CW Key up/down event
-    void ptt(int state);                        // PTT open/close event
-    void sidetonevolume(int level);             // Change side tone volume
-    void sidetonefrequency(int freq);           // Change side tone frequency
+    void setup(void);                                         // to be executed once upon startup
+    void loop(void);                                          // to be executed at each heart beat
+    void cwspeed(int speed);                                  // send CW speed event
+    void key(int state);                                      // CW Key up/down event
+    void ptt(int state);                                      // PTT open/close event
+    void sidetonevolume(int level);                           // Change side tone volume
+    void sidetonefrequency(int freq);                         // Change side tone frequency
+    bool analogDenoise(int pin, uint16_t *val, uint8_t *old); // De-Noise analog input
+    void mastervolume(int level);                             // set master volume
+    void sidetoneenable(int onoff) {                          // enable/disable side tone
+       teensyaudiotone.sidetoneenable(onoff);
+    }
 
 
 private:
@@ -88,11 +114,12 @@ private:
     AudioConnection         patchinr;           // Cable "R" from Audio-in to side tone mixer
     AudioConnection         patchwav;           // Mono-Cable from Side tone oscillator to side tone mixer
     //
-    // These are dynamically created, depending on whether
-    // we use I2S or MQS audio output
+    // These are dynamically created, since they depend on the actual
+    // audio output device
     //
     AudioStream             *audioout=NULL;     // Audio output to headphone
-    AudioControlSGTL5000    *sgtl5000=NULL;     // I2S output controller
+    AudioControlSGTL5000    *sgtl5000=NULL;     // SGTL5000 output controller
+    AudioControlWM8960      *wm8960=NULL;       // WM8960 output controller
     AudioConnection         *patchoutl=NULL;    // Cable "L" from side tone mixer to headphone
     AudioConnection         *patchoutr=NULL;    // Cable "R" from side tone mixer to headphone
 
@@ -105,19 +132,43 @@ private:
     int midi_cw    = -1;                       // MIDI (key) note for CW up/down event
     int midi_ptt   = -1;                       // MIDI (key) note for PTT on/off event
     int midi_speed = -1;                       // MIDI (controller) note for reporting CW speed
+    int midi_pitch = -1;                       // MIDI (controller) note for reporting side tone frequency
     int midi_chan  = -1;                       // MIDI channel for output to SDR program
     int midi_ctrl  = -1;                       // MIDI channel for input from Computer
 
+    //
+    // (Analog) inputs to monitor. A negative value indicates "do not use this feature"
+    //
+    int Pin_SideToneFrequency = -1;
+    int Pin_SideToneVolume    = -1;
+    int Pin_MasterVolume      = -1;
+    int Pin_Speed             = -1;
+ 
+    //
+    // current states of the analog input lines,
+    // kept for de-noising.
+    //
+    uint16_t Analog_SideFreq  = 0;
+    uint16_t Analog_SideVol   = 0;
+    uint16_t Analog_MasterVol = 0;
+    uint16_t Analog_Speed     = 0;
+
+    uint8_t last_sidefreq         = 0;  // range 0 ... 20
+    uint8_t last_sidevol          = 0;
+    uint8_t last_mastervol        = 0;
+    uint8_t last_speed            = 0;
     //
     // Initial side tone frequency and volume.
     // In normal circumstances, these will be set very soon by the
     // caller of this class
     //
-    int  default_freq = 800;                   // default side tone frequency
-    float default_level= 0.2;                  // default side tone volume
+    int  default_freq     = 800;		// default side tone frequency
+    float default_level   = 0.2F;		// default side tone volume
 
-    int mute_on_ptt  = 0;                      // If set, Audio from PC is muted while PTT is set
+    int mute_on_ptt  = 0;			// If set, Audio from PC is muted while PTT is set
 
+    unsigned long last_analog_read = 0;  // time of last analog read
+    unsigned int last_analog_line=0;     // which line was read last time
     //
     // Side tone level (amplitude), in 20 steps from zero to one, about 2 dB per step
     // This is used to convert the value from the (linear) volume pot to an amplitude level
