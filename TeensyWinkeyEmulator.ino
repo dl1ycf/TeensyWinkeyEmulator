@@ -25,8 +25,8 @@
 // The program probably does not compile on a non-Teensy if SERIAL1 is used.
 //
 // File config.h also defines the hardware pins (digital input, digital output,
-// analog input) to be used. Note that when using TEENSYUSBAUDIOMIDI, no analog
-// inputs are handled in this file.                    
+// analog input) to be used. Note that when using TEENSYUSBAUDIOMIDI, a speed pot
+// should be handled there (below we #undef POTPIN if using TEENSYUSBAUDIOMIDI).                
 //
 //////////////////////////////////////////////////////////////////////////////////////////
 
