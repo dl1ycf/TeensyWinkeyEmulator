@@ -118,7 +118,7 @@ void TeensyUSBAudioMidi::loop(void)
     //
     // handle analog lines, but only one analogRead every 5 msec
     // in case of overflow, trigger read.
-    // Read all four input lines in round-robin fashin
+    // Read all four input lines in round-robin fashion
     //
     now = millis();
     if (now < last_analog_read) last_analog_read = now; // overflow recovery
@@ -160,21 +160,46 @@ void TeensyUSBAudioMidi::loop(void)
 
 bool TeensyUSBAudioMidi::analogDenoise(int pin, uint16_t *value, uint8_t *old) {
   //
-  // low-pass the analog input through a moving exponential average
-  // return TRUE if input value has changed
-  // Note the value is in the range (0, 16384) for 10-bit analog reads
+  // Read analog input from pin #pin, convert value to a scale 0-20.
+  // "old" and "value" need to be conserved between calls.
+  // "value" is needed for low-passing, and "old" is given the new
+  // reading in the range 0-20 if the analog input value has changed.
+  // This function returns "true" if the value has changed, and "false"
+  // if there is no update.
+  //
+  // Here comes DL1YCF's "black magic" to de-noise the analog input:
+  //
+  // The result of analogRead() is low-passed through a moving exponential average.
+  // The result of the low-passing is stored in "value" and is in the range
+  // (0, 163368) for 10-bit analog reads (16368 = 16*1023).
   //
   // The value is then converted to the scale 0-20 and the new scale value
-  // is stored in *old, but only if the new value differs by at least 0.77 delta
-  // from the midpoint of the interval of values that produced the old value.
-  // In this way, for a pot positioned exactly at the borderline between two
-  // readings, one needs to move the pot away from this border to produce a new
-  // reading and trigger a change.
+  // is stored in *old. The conversion is done as follows:
   //
-  // The return value indicates whether there is a "new" value.
-  // Note for 20 steps the interval midpoints are 390 + 780*STEP
+  // value =     0 ...   779   ==> reading =  0
+  // value =   780 ...  1559   ==> reading =  1
+  // ...
+  // value = 15600 ... 16368   ==> reading = 20
   //
+  // In this section: VALUE is the low-passed analog reading in the
+  // range 0...16386, while READING is the returned value in the range
+  // 0..20.
+  // While the exponential averaging implements a low-pass filter so we get
+  // rid of high-frequency oscillations in VALUE, we have to guard
+  // against small-amplitude low-frequency oscillations as well. These can
+  // occur if VALUE is close to a multiple of 780 (that is, close to the
+  // border of two intervals leading to different READINGs).
+  // So we remember the previous READING, compute the mid-point of the
+  // interval of VALUEs that possibly lead to this READING, and require that
+  // the new VALUE differs from that midpoint by at least 600.
+  // This means, if the pot is close to the borderline, we have to move the pot
+  // away from this borderline before reporting a new READING.
   //
+  // We have to do this, because slowly varying READINGs for the same
+  // pot position are quite unpleasant, especially if it affects the
+  // side tone frequency.
+  //
+
   uint16_t newval, midpoint;
 
   if (pin < 0) return false; // paranoia
@@ -235,13 +260,7 @@ void TeensyUSBAudioMidi::cwspeed(int speed)
 
 void TeensyUSBAudioMidi::key(int state)
 {
-    //
-    // If side tone is switched off (volume is zero), then
-    // do not produce local side tone
-    //
-    if (sine_level > 0.001) {
-      teensyaudiotone.setTone(state);
-    }
+    teensyaudiotone.setTone(state);
     if (midi_cw >= 0 && midi_chan >= 0) {
        usbMIDI.sendNoteOn(midi_cw, state ? 127 : 0, midi_chan);
        usbMIDI.send_now();
