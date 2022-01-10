@@ -56,13 +56,24 @@ void TeensyUSBAudioMidi::setup(void)
 
     AudioInterrupts();
 
+#ifndef DL1YCF_POTS
+    analogReadRes(12);
+    analogReadAveraging(40);
+#endif
+
 }
 
 void TeensyUSBAudioMidi::loop(void)
 {
+    pots();
+    midi();
+}
+
+
+void TeensyUSBAudioMidi::midi(void)
+{
     uint cmd, data;
     static uint lsb_data = 0;
-    unsigned long now;
 
     //
     // "swallow" incoming MIDI messages on ANY channel,
@@ -115,6 +126,13 @@ void TeensyUSBAudioMidi::loop(void)
             }
         }
     }
+}
+
+
+#ifdef DL1YCF_POTS
+
+void TeensyUSBAudioMidi::pots() {
+    unsigned long now;
     //
     // handle analog lines, but only one analogRead every 5 msec
     // in case of overflow, trigger read.
@@ -129,7 +147,7 @@ void TeensyUSBAudioMidi::loop(void)
           if (Pin_SideToneFrequency >= 0) {
             if (analogDenoise(Pin_SideToneFrequency, &Analog_SideFreq, &last_sidefreq)) {
               sidetonefrequency(400+30*last_sidefreq);  // 400 ... 1000 Hz in 30 Hz steps
-            }      
+            }
           }
           break;
         case 1: // SideToneVolume
@@ -218,6 +236,78 @@ bool TeensyUSBAudioMidi::analogDenoise(int pin, uint16_t *value, uint8_t *old) {
   }
 }
 
+#else
+
+void TeensyUSBAudioMidi::pots()
+{
+    uint16_t analog_data;
+    unsigned long m = millis();
+
+    // Call every 10 ms, will handle rollover as both m and last_analog_read are unsigned long
+    if ((m - last_analog_read) > 10) {
+
+        if (last_analog_line == 0) {
+            // Master volume
+            analog_data = analogRead(Pin_MasterVolume);
+            // At 12 bit this averaging will produce a value in the 0 to 8191 range, 13 bits
+            Analog_MasterVol = (Analog_MasterVol >> 1) + analog_data;
+
+            // Volume is 80 values, so only care if more than about 2**7 bit change
+            if (abs(Analog_MasterVol - last_mastervol) > 64) {
+                mastervolume( ((float)(8191-Analog_MasterVol)) / 8191.0);
+                last_mastervol = Analog_MasterVol;
+                //Serial.print("MV ");
+                //Serial.println(analog_data);
+            }
+        } else if (last_analog_line == 1) {
+
+            // Sidetone volume
+            analog_data = analogRead(Pin_SideToneVolume);
+            Analog_SideVol = (Analog_SideVol >> 1) + analog_data;
+            // Sidetone volume has 32 entries so 5 bits
+            if (abs(Analog_SideVol - last_sidevol) > 256) {
+                sidetonevolume((8191-Analog_SideVol)>>8);
+                last_sidevol = Analog_SideVol;
+                //Serial.print("SV ");
+                //Serial.println(analog_data);
+            }
+        } else if (last_analog_line == 2) {
+
+            // Sidetone frequency
+            analog_data = analogRead(Pin_SideToneFrequency);
+            Analog_SideFreq = (Analog_SideFreq >> 1) + analog_data;
+            // Range between 250 and 1274, 10 bits
+            if (abs(Analog_SideFreq - last_sidefreq) > 64) {
+                // Range between 100 and 2147 hz
+                sidetonefrequency(((8191-Analog_SideFreq) >> 3) + 250);
+                last_sidefreq = Analog_SideFreq;
+                //Serial.print("SF ");
+                //Serial.println(analog_data);
+            }
+        } else if (last_analog_line == 3) {
+
+            // Speed
+            analog_data = analogRead(Pin_Speed);
+            Analog_Speed = (Analog_Speed >> 1) + analog_data;
+            // range between 3 and 67 WPM, 6 bits
+            if (abs(Analog_Speed - last_speed) > 128) {
+                // range between 1 and 65 WPM
+                cwspeed( ((8191-Analog_Speed)>>7) + 3);
+                last_speed = Analog_Speed;
+                //Serial.print("SP ");
+                //Serial.println(pot_speed);
+                //Serial.print(" ");
+                //Serial.println(analog_data);
+            }
+        }
+
+        last_analog_read = m;
+        last_analog_line = (last_analog_line + 1) & 0x3;
+    }
+}
+
+#endif
+
 void TeensyUSBAudioMidi::sidetonefrequency(int freq)
 {
     int val;
@@ -236,7 +326,7 @@ void TeensyUSBAudioMidi::sidetonefrequency(int freq)
       usbMIDI.sendControlChange(midi_pitch, val, midi_chan);
     }
 }
-    
+
 void TeensyUSBAudioMidi::cwspeed(int speed)
 {
     //
@@ -280,32 +370,27 @@ void TeensyUSBAudioMidi::ptt(int state)
     }
 }
 
-void TeensyUSBAudioMidi::sidetonevolume(int level) 
+void TeensyUSBAudioMidi::sidetonevolume(int level)
 {
   //
-  // The input value (level) is in the range 0-20 and converted to
+  // The input value (level) is in the range 0-31 and converted to
   // an amplitude using VolTab, such that a logarithmic pot is
   // simulated.
   //
   if (level <  0) level=0;
-  if (level > 20) level=20;
+  if (level > 31) level=31;
   sine_level=VolTab[level];
   sine.amplitude(sine_level);
 }
 
-void TeensyUSBAudioMidi::mastervolume(int level) 
+void TeensyUSBAudioMidi::mastervolume(float level)
 {
-  //
-  // The input value (level) is in the range 0-20 and converted to
-  // a float parameter between 0 and 1
-  //
-  if (level <  0) level=0;
-  if (level > 20) level=20;
+// level 0.0 to 1.0
   if (sgtl5000) {
-    sgtl5000->volume((float) level * 0.05F);
+    sgtl5000->volume(level);
   }
   if (wm8960) {
-    wm8960->volume((float) level * 0.05F);
+    wm8960->volume(level);
   }
 }
 #endif

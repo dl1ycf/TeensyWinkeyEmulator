@@ -74,7 +74,7 @@ public:
       switch (i2s) {
         case 0:
         default:
-	  audioout = new AudioOutputMQS;
+	        audioout = new AudioOutputMQS;
           break;
         case 1:
           audioout  = new AudioOutputI2S;
@@ -94,13 +94,17 @@ public:
 
     void setup(void);                                         // to be executed once upon startup
     void loop(void);                                          // to be executed at each heart beat
+    void midi(void);                                          // MIDI loop
+    void pots(void);                                          // Potentiometer loop
     void cwspeed(int speed);                                  // send CW speed event
     void key(int state);                                      // CW Key up/down event
     void ptt(int state);                                      // PTT open/close event
     void sidetonevolume(int level);                           // Change side tone volume
     void sidetonefrequency(int freq);                         // Change side tone frequency
+#ifdef POTS_DL1YCF
     bool analogDenoise(int pin, uint16_t *val, uint8_t *old); // De-Noise analog input
-    void mastervolume(int level);                             // set master volume
+#endif
+    void mastervolume(float level);                           // set master volume
     void sidetoneenable(int onoff) {                          // enable/disable side tone
        teensyaudiotone.sidetoneenable(onoff);
     }
@@ -143,7 +147,7 @@ private:
     int Pin_SideToneVolume    = -1;
     int Pin_MasterVolume      = -1;
     int Pin_Speed             = -1;
- 
+
     //
     // current states of the analog input lines,
     // kept for de-noising.
@@ -153,10 +157,10 @@ private:
     uint16_t Analog_MasterVol = 0;
     uint16_t Analog_Speed     = 0;
 
-    uint8_t last_sidefreq         = 0;  // range 0 ... 20
-    uint8_t last_sidevol          = 0;
-    uint8_t last_mastervol        = 0;
-    uint8_t last_speed            = 0;
+    uint16_t last_sidefreq         = 0;  // range 0 ... 20
+    uint16_t last_sidevol          = 0;
+    uint16_t last_mastervol        = 0;
+    uint16_t last_speed            = 0;
     //
     // Initial side tone frequency and volume.
     // In normal circumstances, these will be set very soon by the
@@ -169,16 +173,33 @@ private:
 
     unsigned long last_analog_read = 0;  // time of last analog read
     unsigned int last_analog_line=0;     // which line was read last time
+
     //
-    // Side tone level (amplitude), in 20 steps from zero to one, about 2 dB per step
+    // Side tone level (amplitude), in 32 steps from zero to one, about 2 dB per step
     // This is used to convert the value from the (linear) volume pot to an amplitude level
     //
-    // Note: sidetonevolume() takes an integer argument between 0 and 20, and this data
+    // Note: sidetonevolume() takes an integer argument between 0 and 31, and this data
     //       is then used to convert to an amplitude for the side tone oscillator
     //
+    // math.pow(10,-3+x/10.3333) where x is integer value, -3 is number of decades, and 10.3333 is maxx/decades
+    // for i in range(0,32): print(math.pow(10, -2+i/15.5))
 
-    float VolTab[21]={0.000,0.0126,0.0158,0.0200,0.0251,0.0316,0.0398,0.0501,0.0631,0.0794,
-                      0.100,0.1258,0.1585,0.1995,0.2511,0.3162,0.3981,0.5012,0.6309,0.7943,1.0000};
+
+    //float VolTab[32]={0.000,0.0126,0.0158,0.0200,0.0251,0.0316,0.0398,0.0501,0.0631,0.0794,
+    //                  0.100,0.1258,0.1585,0.1995,0.2511,0.3162,0.3981,0.5012,0.6309,0.7943,1.0000};
+
+    // 3 decades
+    //float VolTab[32]={0.001,0.00125,0.00156,0.00195,0.00244,0.00305,0.00381,0.00476,
+    //                  0.00595,0.00743,0.00928,0.0116,0.0145,0.01812,0.02264,0.02829,
+    //                  0.03535,0.04417,0.0552,0.06898,0.0862,0.10771,0.1346,0.1682,
+    //                  0.21018,0.26264,0.3282,0.41012,0.51249,0.64041,0.80027,1.0000};
+
+    //2 decades
+    float VolTab[32] = {0.01,0.0116,0.0135,0.0156,0.0181,0.021,0.0244,0.0283,
+                        0.0328,0.0381,0.0442,0.0512,0.0595,0.069,0.08,0.0928,
+                        0.1077,0.125,0.145,0.1682,0.1951,0.2264,0.2626,0.3047,
+                        0.3535,0.4101,0.4758,0.552,0.6404,0.743,0.862,1.0};
+
 };
 
 #endif

@@ -36,7 +36,7 @@
 //
 ////////////////////////////////////////////////////////////////////////////
 
-#define AUDIO_OUTPUT             0   // 0: MQS, 1: I2S(wm8960), 2: I2S(sgtl5000)
+#define AUDIO_OUTPUT             1   // 0: MQS, 1: I2S(wm8960), 2: I2S(sgtl5000)
 #define SIDETONE_VOLUME        0.2   // initial side tone volume
 #define SIDETONE_FREQ          800   // initial side tone frequency
 #define MUTE_ON_PTT              1   // if true, mute RX audio while PTT is active
@@ -50,8 +50,8 @@
 #define PaddleRight              1   // input for right paddle
 #define PaddleLeft               0   // input for left paddle
 #define StraightKey              2   // input for straight key
-#define CW1                      4   // output (active high) for CW key-down
-#define PTT1                     5   // output (active high) for PTT on/off
+#define CW1                      5   // output (active high) for CW key-down
+#define PTT1                     4   // output (active high) for PTT on/off
 //#define PTT2                   6   // output (active low)  for PTT on/off
 //#define TONEPIN                7   // output for square wave side tone
 
@@ -61,10 +61,10 @@
 //
 ////////////////////////////////////////////////////////////////////////////
 
-#define TEENSY_ANALOG_SIDEVOL   -1   // Analog input for side tone volume, -1 if not used
-#define TEENSY_ANALOG_SIDEFREQ  -1   // Analog input for CW pitch, -1 if not used
-#define TEENSY_ANALOG_MASTERVOL -1   // Analog input for master volume, -1 if not used
-#define TEENSY_ANALOG_SPEED     A2   // Analog input for speed pot in TeensyUSBAudioMidi, -1 if not used
+#define TEENSY_ANALOG_SIDEVOL   A2   // Analog input for side tone volume, -1 if not used
+#define TEENSY_ANALOG_SIDEFREQ  A3   // Analog input for CW pitch, -1 if not used
+#define TEENSY_ANALOG_MASTERVOL A1   // Analog input for master volume, -1 if not used
+#define TEENSY_ANALOG_SPEED     A8   // Analog input for speed pot in TeensyUSBAudioMidi, -1 if not used
 
 ////////////////////////////////////////////////////////////////////////////
 //
@@ -73,3 +73,6 @@
 ////////////////////////////////////////////////////////////////////////////
 
 //#define POTPIN                A2    // Analog input for speed pot handled in the keyer
+
+
+//#define DL1YCF_POTS
