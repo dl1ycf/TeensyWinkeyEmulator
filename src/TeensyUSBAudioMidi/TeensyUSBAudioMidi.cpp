@@ -93,8 +93,8 @@ void TeensyUSBAudioMidi::midi(void)
                     break;
 
                 case 4 :
-                    // Set WPM
-                    speed_set(data);
+                    // Set WPM, inform SDR program via MIDI
+                    cwspeed(data);
                     break;
 
                 case 5 :
@@ -105,9 +105,9 @@ void TeensyUSBAudioMidi::midi(void)
                     break;
 
                 case 6 :
-                    // Set sidetone frequency
+                    // Set sidetone frequency, inform SDR program via MIDI
                     lsb_data = (data << 7) | lsb_data;
-                    sine.frequency(float(lsb_data));
+		    sidetonefrequency(lsb_data),
                     break;
 
                 case 16 :
