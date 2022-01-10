@@ -9,12 +9,11 @@
 
 #define TEENSYUSBAUDIOMIDI          // use TeensyUSBAudioMidi library (audio and MIDI)
 //#define USBMIDI                   // use usbMIDI for MIDI messages (Teensy or 32U4 based Arduino)
-//#define MOCOLUFA                  // use standard serial port for MIDI messages
-#define HWSERIAL                    // use "standard" serial connection for Winkey protocol
-//#define SWSERIAL                  // use "software serial" for Winkey protocol (requires TXD RXD)
-//#define TXD 8                     // TX pin if using SWSERIAL
-//#define RXD 9                     // RX pin if using SWSERIAL
-//#define SERIAL1                   // use UART not USB for Winkey protocol (Teensy only)
+//#define MOCOLUFA                  // use standard serial port for MIDI messages at 31250 baud
+#define HWSERIAL                    // use standard serial connection (1200 baud) for Winkey protocol
+//#define SWSERIAL                  // use "software serial" (1200 baud) for Winkey protocol (requires TXD+RXD)
+//#define TXD 8                     // TXD digital output pin if using SWSERIAL
+//#define RXD 9                     // RXD digital input  pin if using SWSERIAL
 
 ////////////////////////////////////////////////////////////////////////////
 //
@@ -47,13 +46,14 @@
 //
 ////////////////////////////////////////////////////////////////////////////
 
-#define PaddleRight              1   // input for right paddle
-#define PaddleLeft               0   // input for left paddle
-#define StraightKey              2   // input for straight key
-#define CW1                      5   // output (active high) for CW key-down
-#define PTT1                     4   // output (active high) for PTT on/off
-//#define PTT2                   6   // output (active low)  for PTT on/off
-//#define TONEPIN                7   // output for square wave side tone
+#define PaddleRight              1   // Digital input for right paddle
+#define PaddleLeft               0   // Digital input for left paddle
+#define StraightKey              2   // Digital input for straight key
+#define CW1                      5   // Digital output (active high) for CW key-down
+//#define CW2                   10   // Digital output (active high) for CW key-down
+#define PTT1                     4   // Digital output (active high) for PTT on/off
+//#define PTT2                   6   // Digital output (active low)  for PTT on/off
+//#define TONEPIN                7   // Digital output for square wave side tone
 
 ////////////////////////////////////////////////////////////////////////////
 //
@@ -61,14 +61,14 @@
 //
 ////////////////////////////////////////////////////////////////////////////
 
-#define TEENSY_ANALOG_SIDEVOL   A2   // Analog input for side tone volume, -1 if not used
-#define TEENSY_ANALOG_SIDEFREQ  A3   // Analog input for CW pitch, -1 if not used
-#define TEENSY_ANALOG_MASTERVOL A1   // Analog input for master volume, -1 if not used
-#define TEENSY_ANALOG_SPEED     A8   // Analog input for speed pot in TeensyUSBAudioMidi, -1 if not used
+#define TEENSY_ANALOG_SIDEVOL   A2   // Analog input for side tone volume
+#define TEENSY_ANALOG_SIDEFREQ  A3   // Analog input for CW pitch
+#define TEENSY_ANALOG_MASTERVOL A1   // Analog input for master volume
+#define TEENSY_ANALOG_SPEED     A8   // Analog input for speed pot in TeensyUSBAudioMidi
 
 ////////////////////////////////////////////////////////////////////////////
 //
-// Analog input pins when *not* using the TeensyUSBAudioMidi class
+// Analog input pin for speed pot when *not* using the TeensyUSBAudioMidi class
 //
 ////////////////////////////////////////////////////////////////////////////
 
