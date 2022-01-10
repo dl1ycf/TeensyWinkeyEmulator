@@ -16,13 +16,11 @@
 // 
 // Incompatible options (to be removed below):
 //
-// -  HWSERIAL overrides SWSERIAL and SERIAL1.
-// -  SWSERIAL overrides SERIAL1
+// -  HWSERIAL overrides SWSERIAL
 // -  TEENSYUSBAUDIOMIDI overrides USBMIDI and MOCOLUFA.
 // -  USBMIDI overrides MOCOLUFA
 // -  MOCOLUFA disables HWSERIAL
 //
-// The program probably does not compile on a non-Teensy if SERIAL1 is used.
 //
 // File config.h also defines the hardware pins (digital input, digital output,
 // analog input) to be used. Note that when using TEENSYUSBAUDIOMIDI, a speed pot
@@ -54,17 +52,49 @@
 
 #ifdef HWSERIAL
 #undef SWSERIAL
-#undef SERIAL1
 #endif
 
 #if !defined(RXD_PIN) || !defined(TXD_PIN)
 #undef SWSERIAL
 #endif
 
-#ifdef SWSERIAL
-#undef SERIAL1
+////////////////////////////////////////////////////////////////////////////////////////
+//
+// Some variables are needed, set them to -1 if not defined
+//
+////////////////////////////////////////////////////////////////////////////////////////
+
+#ifndef TEENSY_ANALOG_SIDEVOL
+#define TEENSY_ANALOG_SIDEVOL   -1
+#endif
+#ifndef TEENSY_ANALOG_SIDEFREQ
+#define TEENSY_ANALOG_SIDEFREQ  -1
+#endif
+#ifndef TEENSY_ANALOG_MASTERVOL
+#define TEENSY_ANALOG_MASTERVOL -1
+#endif
+#ifndef TEENSY_ANALOG_SPEED
+#define TEENSY_ANALOG_SPEED     -1
 #endif
 
+#ifndef MIDI_CW_CHANNEL
+#define MIDI_CW_CHANNEL         -1
+#endif
+#ifndef MIDI_CW_NOTE
+#define MIDI_CW_NOTE            -1
+#endif
+#ifndef MIDI_PTT_NOTE
+#define MIDI_PTT_NOTE           -1
+#endif
+#ifndef MIDI_SPEED_CTRL
+#define MIDI_SPEED_CTRL         -1
+#endif
+#ifndef MIDI_PITCH_CTRL
+#define MIDI_PITCH_CTRL         -1
+#endif
+#ifndef MIDI_CONTROL_CHANNEL
+#define MIDI_CONTROL_CHANNEL    -1
+#endif 
 ////////////////////////////////////////////////////////////////////////////////////////
 //
 //                                MAIN FEATURES
@@ -479,9 +509,7 @@ void setup() {
 #ifdef HWSERIAL  
   Serial.begin(1200);  // baud rate has no meaning on 32U4 and Teensy systems
 #endif
-#ifdef SERIAL1
-  Serial1.begin(1200);
-#endif
+
 #ifdef SWSERIAL
   pinMode(RXD_PIN, INPUT);
   pinMode(TXD_PIN, OUTPUT);
@@ -494,8 +522,12 @@ void setup() {
 #ifdef StraightKey
   pinMode(StraightKey, INPUT_PULLUP);
 #endif
+
+#if defined(PaddleLeft) && defined(PaddleRight)
   pinMode(PaddleLeft,  INPUT_PULLUP);
   pinMode(PaddleRight, INPUT_PULLUP);
+#endif  
+
 
 #ifdef CW1
   // active-high CW output
@@ -503,7 +535,7 @@ void setup() {
   digitalWrite(CW1, LOW);
 #endif
 #ifdef CW2
-  active-low CW output
+  // active-low CW output
   pinMode(CW2, OUTPUT);
   digitalWrite(CW2, HIGH);
 #endif
@@ -674,9 +706,7 @@ int FromHost() {
 #ifdef HWSERIAL  
   c=Serial.read();
 #endif
-#ifdef SERIAL1
-  c=Serial1.read();
-#endif
+
 #ifdef SWSERIAL
   c=swserial.read();
 #endif      
@@ -693,9 +723,7 @@ void ToHost(int c) {
 #ifdef HWSERIAL  
   Serial.write(c);
 #endif
-#ifdef SERIAL1
-  Serial1.write(c);
-#endif
+
 #ifdef SWSERIAL
   swserial.write(c);
 #endif      
@@ -711,9 +739,7 @@ int ByteAvailable() {
 #ifdef HWSERIAL  
   return Serial.available();
 #endif
-#ifdef SERIAL1
-  return Serial1.available();
-#endif
+
 #ifdef swserial
   return swserial.available();
 #endif        
@@ -742,9 +768,11 @@ void keydown() {
 #endif
 #ifdef CW2                                              //active-low CW line
   digitalWrite(CW2,LOW);
-#endif      
+#endif
+#if (MIDI_CW_NOTE >= 0 && MIDI_CW_CHANNEL >= 0)        
 #if defined(MOCOLUFA) || defined(USBMIDI)               // MIDI message
   NoteOn(MIDI_CW_NOTE, MIDI_CW_CHANNEL);
+#endif
 #endif  
 #ifdef TEENSYUSBAUDIOMIDI                               // MIDI and sidetone
  teensyusbaudiomidi.key(1);
@@ -771,9 +799,11 @@ void keyup() {
 #endif
 #ifdef CW2
   digitalWrite(CW2,HIGH);                               // active-low CW output
-#endif      
+#endif
+#if (MIDI_CW_NOTE >= 0 && MIDI_CW_CHANNEL >= 0)        
 #if defined(MOCOLUFA) || defined(USBMIDI)               // MIDI message
   NoteOff(MIDI_CW_NOTE, MIDI_CW_CHANNEL);
+#endif
 #endif    
 #ifdef TEENSYUSBAUDIOMIDI                               // MIDI and side tone
  teensyusbaudiomidi.key(0);
@@ -797,9 +827,11 @@ void ptt_on() {
 #endif
 #ifdef PTT2                                               // active low PTT line
   digitalWrite(PTT2,LOW);
-#endif   
+#endif
+#if (MIDI_PTT_NOTE >= 0 && MIDI_CW_CHANNEL >= 0)   
 #if defined(MOCOLUFA) || defined(USBMIDI)                 // MIDI message
   NoteOn(MIDI_PTT_NOTE, MIDI_CW_CHANNEL);
+#endif
 #endif    
 #ifdef TEENSYUSBAUDIOMIDI   
   teensyusbaudiomidi.ptt(1);
@@ -823,9 +855,11 @@ void ptt_off() {
 #endif
 #ifdef PTT2
   digitalWrite(PTT2,HIGH);                                // active low PTT line
-#endif    
+#endif
+#if (MIDI_PTT_NOTE >= 0 && MIDI_CW_CHANNEL >= 0)    
 #if defined(MOCOLUFA) || defined(USBMIDI)                  // MIDI message
   NoteOff(MIDI_PTT_NOTE, MIDI_CW_CHANNEL);
+#endif
 #endif   
 #ifdef TEENSYUSBAUDIOMIDI   
   teensyusbaudiomidi.ptt(0);
@@ -1520,6 +1554,11 @@ void WinKey_state_machine() {
         break;
       case WKSPEED:
         HostSpeed=byte;
+#ifdef TEENSYUSBAUDIOMIDI        
+        if (HostSpeed != 0) {
+          teensyusbaudiomidi.cwspeed(HostSpeed);
+        }
+#endif
         winkey_state=FREE;
         break;
       case WEIGHT:
@@ -1604,6 +1643,11 @@ void WinKey_state_machine() {
             break;
           case  1:
             HostSpeed=byte;
+#ifdef TEENSYUSBAUDIOMIDI        
+            if (HostSpeed != 0) {
+              teensyusbaudiomidi.cwspeed(HostSpeed);
+            }
+#endif
             break;
           case  2:
             Sidetone=byte;
@@ -1811,7 +1855,8 @@ void loop() {
   // Note that we are monitoring the lines at high speed thus need no
   // interrupts
   ///////////////////////////////////////////////////////////////////////////////
-  
+
+#if defined(PaddleRight) && defined(PaddleLeft)
   if (actual >= DotDebounce) {
     i=!digitalRead(PADDLE_SWAP ? PaddleRight : PaddleLeft);
     if (i != kdot) {
@@ -1835,6 +1880,7 @@ void loop() {
       }
     }
   }
+#endif
   
 #ifdef StraightKey
   if (actual >= StraightDebounce) {
