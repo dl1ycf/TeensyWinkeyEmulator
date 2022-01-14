@@ -46,8 +46,8 @@
 //
 ////////////////////////////////////////////////////////////////////////////
 
-#define PaddleRight              1   // Digital input for right paddle
-#define PaddleLeft               0   // Digital input for left paddle
+#define PaddleRight              0   // Digital input for right paddle
+#define PaddleLeft               1   // Digital input for left paddle
 #define StraightKey              2   // Digital input for straight key
 #define CW1                      5   // Digital output (active high) for CW key-down
 //#define CW2                   10   // Digital output (active high) for CW key-down
