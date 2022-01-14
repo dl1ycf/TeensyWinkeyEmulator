@@ -470,13 +470,7 @@ void speed_set(int teensyspeed) {
   Speed=teensyspeed;
 }
 
-TeensyUSBAudioMidi teensyusbaudiomidi(MIDI_CW_NOTE,
-                                      MIDI_PTT_NOTE,
-                                      MIDI_SPEED_CTRL,
-                                      MIDI_PITCH_CTRL,
-                                      MIDI_CW_CHANNEL,
-                                      MIDI_CONTROL_CHANNEL,
-                                      MUTE_ON_PTT,
+TeensyUSBAudioMidi teensyusbaudiomidi(MUTE_ON_PTT,
                                       AUDIO_OUTPUT,
                                       SIDETONE_FREQ,
                                       SIDETONE_VOLUME,
@@ -484,7 +478,6 @@ TeensyUSBAudioMidi teensyusbaudiomidi(MIDI_CW_NOTE,
                                       TEENSY_ANALOG_SIDEFREQ,
                                       TEENSY_ANALOG_MASTERVOL,
                                       TEENSY_ANALOG_SPEED);
-                                      
 #endif
 
 void init_eeprom();
@@ -834,7 +827,7 @@ void ptt_on() {
 #endif
 #endif    
 #ifdef TEENSYUSBAUDIOMIDI   
-  teensyusbaudiomidi.ptt(1);
+  teensyusbaudiomidi.cw_headtail(1);
 #endif  
 }
 
@@ -862,7 +855,7 @@ void ptt_off() {
 #endif
 #endif   
 #ifdef TEENSYUSBAUDIOMIDI   
-  teensyusbaudiomidi.ptt(0);
+  teensyusbaudiomidi.cw_headtail(0);
 #endif  
 }
 
