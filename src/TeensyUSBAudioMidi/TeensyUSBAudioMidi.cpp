@@ -107,7 +107,7 @@ void TeensyUSBAudioMidi::midi(void)
                 case 6 :
                     // Set sidetone frequency, inform SDR program via MIDI
                     lsb_data = (data << 7) | lsb_data;
-		    sidetonefrequency(lsb_data),
+		    sidetonefrequency(lsb_data);
                     break;
 
                 case 16 :
