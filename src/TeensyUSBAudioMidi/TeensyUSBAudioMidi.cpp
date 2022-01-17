@@ -390,7 +390,7 @@ void TeensyUSBAudioMidi::sidetonevolume(uint16_t level)
   sine.amplitude(VolTab[level]);
 }
 
-// Expected freq is 0 to 8191, maps to range 250 to about 1270Hz
+// Expected input value is 0 to 8191, maps to range 250 to about 1270Hz
 void TeensyUSBAudioMidi::sidetonefrequency(uint16_t freq)
 {
   sine.frequency( 250+((float)freq)/8.0 );
@@ -400,7 +400,7 @@ void TeensyUSBAudioMidi::sidetonefrequency(uint16_t freq)
   }
 }
 
-// Expected speed is 1 to 127
+// Expected speed is 1 to 127, don't use high values if not desired, no fractional CW speeds
 void TeensyUSBAudioMidi::cwspeed(uint16_t speed)
 {
   if (speed == 0) speed = 1;

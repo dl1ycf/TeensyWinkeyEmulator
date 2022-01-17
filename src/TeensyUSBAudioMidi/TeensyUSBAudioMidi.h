@@ -89,7 +89,10 @@ public:
         break;
       case 1:
         audioout  = new AudioOutputI2S;
+        audioin   = new AudioInputI2S;
         wm8960    = new AudioControlWM8960;
+        patchusboutl = new AudioConnection(*audioin, 0, usbaudiooutput, 0);
+        patchusboutr = new AudioConnection(*audioin, 1, usbaudiooutput, 1);
         break;
       case 2:
         audioout  = new AudioOutputI2S;
@@ -97,7 +100,7 @@ public:
         break;
     }
     //
-    // Solder cables from teensyaudioton to the just-initialized audio output
+    // Solder cables from teensyaudiotone to the just-initialized audio output
     //
     patchoutl = new AudioConnection(teensyaudiotone, 0, *audioout,        0);
     patchoutr = new AudioConnection(teensyaudiotone, 1, *audioout,        1);
@@ -133,15 +136,19 @@ public:
 private:
   AudioSynthWaveformSine  sine;               // free-running side tone oscillator
   AudioInputUSB           usbaudioinput;      // Audio in from Computer
+  AudioOutputUSB          usbaudiooutput;     // Audio out to Computer
   TeensyAudioTone         teensyaudiotone;    // Side tone mixer
   AudioConnection         patchinl;           // Cable "L" from Audio-in to side tone mixer
   AudioConnection         patchinr;           // Cable "R" from Audio-in to side tone mixer
   AudioConnection         patchwav;           // Mono-Cable from Side tone oscillator to side tone mixer
+  AudioConnection         *patchusboutl=NULL;
+  AudioConnection         *patchusboutr=NULL;
   //
   // These are dynamically created, since they depend on the actual
   // audio output device
   //
   AudioStream             *audioout=NULL;     // Audio output to headphone
+  AudioStream             *audioin=NULL;
   AudioControlSGTL5000    *sgtl5000=NULL;     // SGTL5000 output controller
   AudioControlWM8960      *wm8960=NULL;       // WM8960 output controller
   AudioConnection         *patchoutl=NULL;    // Cable "L" from side tone mixer to headphone
