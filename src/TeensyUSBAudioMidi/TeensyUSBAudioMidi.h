@@ -99,7 +99,7 @@ public:
 			break;
 	  }
 	  //
-	  // Solder cables from teensyaudioton to the just-initialized audio output
+	  // Solder cables from teensyaudiotone to the just-initialized audio output
 	  //
 	  if (audioin) {
 		patchusboutl = new AudioConnection(*audioin, 0, usbaudiooutput, 0);
