@@ -77,24 +77,6 @@
 #define TEENSY_ANALOG_SPEED		-1
 #endif
 
-#ifndef MIDI_CW_CHANNEL
-#define MIDI_CW_CHANNEL			-1
-#endif
-#ifndef MIDI_CW_NOTE
-#define MIDI_CW_NOTE			-1
-#endif
-#ifndef MIDI_PTT_NOTE
-#define MIDI_PTT_NOTE			-1
-#endif
-#ifndef MIDI_SPEED_CTRL
-#define MIDI_SPEED_CTRL			-1
-#endif
-#ifndef MIDI_PITCH_CTRL
-#define MIDI_PITCH_CTRL			-1
-#endif
-#ifndef MIDI_CONTROL_CHANNEL
-#define MIDI_CONTROL_CHANNEL	-1
-#endif 
 ////////////////////////////////////////////////////////////////////////////////////////
 //
 //								  MAIN FEATURES
