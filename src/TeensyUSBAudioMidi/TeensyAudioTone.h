@@ -28,8 +28,6 @@
 #include "AudioStream.h"
 #include "arm_math.h"
 
-void speed_set(int);
-
 class TeensyAudioTone : public AudioStream
 {
 public:

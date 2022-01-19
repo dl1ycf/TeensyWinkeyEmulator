@@ -452,6 +452,37 @@ void speed_set(int teensyspeed) {
   Speed=teensyspeed;
 }
 
+void keyer_autoptt_set(int enable) {
+  //
+  // Interface to let the TeensyUSBAudioMidi class
+  // set the "use PTT" flag.
+  //
+  PinConfig |= 0x01;
+}
+
+void keyer_leadin_set(int t) {
+  //
+  // Interface to let the TeensyUSBAudioMidi class
+  // set the lead-in time. The time is rounded to the
+  // next multiple of 10 (milli-seconds)
+  //
+  LeadIn = (t + 5)/10;
+}
+
+void keyer_hang_set(int hang) {
+  //
+  // Interface to let the TeensyUSBAudioMidi class
+  // set the "PTT hang" time. The time is in
+  // dot-lengths so it varies with the CW speed.
+  // Note: WinKeyer encodes 8/9/11/15 dot lengths in HANGBITS
+  //
+  Tail=0;
+  PinConfig &= 0x30;                               //  8 dot lengths hang time
+  if (hang >=  9  && hang <10) PinConfig |= 0x01;  //  9 dot lengths hang time
+  if (hang >= 11  && hang <13) PinConfig |= 0x02;  // 11 dot lengths hang time
+  if (hang >= 14)              PinConfig |= 0x03;  // 15 dot lengths hang time
+}
+
 TeensyUSBAudioMidi teensyusbaudiomidi(AUDIO_OUTPUT,
 									  SIDETONE_FREQ,
 									  SIDETONE_VOLUME,
