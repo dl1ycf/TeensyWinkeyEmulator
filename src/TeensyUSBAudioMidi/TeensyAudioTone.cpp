@@ -46,7 +46,7 @@
 // Do[{l = Table[PaddedForm[Tab[[j]], 12], {j, 8*i + 1, 8*i + 8}], Print[Row[l, ","], ","]}, {i, 0, 15}]
 //
 // SciPy code to generate it:
-// 
+//
 //import numpy as np
 //import scipy.signal
 //a = np.round((2**31)*scipy.signal.windows.hann(259))
@@ -179,7 +179,7 @@ void TeensyAudioTone::update(void)
         } else {
           //
           // mute set but not within a "window": send silence
-	  //
+      //
           // NOTE: in the very un-probable case that tone == windowindex == mute == 0,
           //       (since there was a spike on "tone")
           //       we also arrive here and send one block of silence
