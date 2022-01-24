@@ -583,11 +583,11 @@ void setup() {
 #ifdef MY_CWPTT_NOTE
   cwshield.set_midi_cwptt_note(MY_CWPTT_NOTE);
 #endif
-#ifdef MY_SPEED_CNTRL
-  cwshield.set_midi_speed_ctrl(MY_SPEED_CNTRL);
+#ifdef MY_SPEED_CTRL
+  cwshield.set_midi_speed_ctrl(MY_SPEED_CTRL);
 #endif
-#ifdef MY_FREQ_CNTRL
-  cwshield.set_midi_freq_ctrl(MY_FREQ_CNTRL);
+#ifdef MY_FREQ_CTRL
+  cwshield.set_midi_freq_ctrl(MY_FREQ_CTRL);
 #endif
 #ifdef MY_MUTE_OPTION
   cwshield.set_cwptt_mute_option(1);

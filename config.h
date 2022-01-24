@@ -42,6 +42,31 @@
 
 ////////////////////////////////////////////////////////////////////////////
 //
+// Settings for MIDI commands (channels, notes)
+//
+// If MIDI events are not needed or wanted, just do not define the
+// corresponding Note/Controller. 
+// The CWKeyerShield library uses built-in MIDI defaults, so if you
+// want to explicitly disable a certain MIDI event, set the Note/controller
+// value to -1.
+//
+// The values given here are the default settings of the CWKeyerShield
+// library. MY_RX_CHANNEL only applies to the CWKeyerShield library that
+// allows changing keyer settings by sending MIDI messages to the keyer.
+//
+//
+////////////////////////////////////////////////////////////////////////////
+
+#define MY_TX_CHANNEL                 1      // MIDI channel Keyer ==> SDR program
+#define MY_RX_CHANNEL                 2      // MIDI channel Controller ==> Keyer
+#define MY_KEYDOWN_NOTE               1      // MIDI note for key-down (to SDR program)
+#define MY_CWPTT_NOTE                 2      // MIDI note for PTT (to SDR program)
+#define MY_SPEED_CTRL                 3      // MIDI controller for reporting speed (to SDR program)
+#define MY_FREQ_CTRL                  4      // MIDI controller for reporting side tone
+                                             // frequency (to SDR program)
+
+////////////////////////////////////////////////////////////////////////////
+//
 // Digital input and output pins for Morse keys and CW/PTT output
 // In this section a digital output pin for a square-wave side tone can be
 // defined.
