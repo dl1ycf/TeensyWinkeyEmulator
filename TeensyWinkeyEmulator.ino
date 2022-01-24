@@ -17,14 +17,14 @@
 // Incompatible options (to be removed below):
 //
 // -  HWSERIAL overrides SWSERIAL
-// -  TEENSYUSBAUDIOMIDI overrides USBMIDI and MOCOLUFA.
+// -  CWKEYERSHIELD overrides USBMIDI and MOCOLUFA.
 // -  USBMIDI overrides MOCOLUFA
 // -  MOCOLUFA disables HWSERIAL
 //
 //
 // File config.h also defines the hardware pins (digital input, digital output,
-// analog input) to be used. Note that when using TEENSYUSBAUDIOMIDI, a speed pot
-// should be handled there (below we #undef POTPIN if using TEENSYUSBAUDIOMIDI).
+// analog input) to be used. Note that when using CWKEYERSHIELD, a speed pot
+// should be handled there (below we #undef POTPIN if using CWKEYERSHIELD).
 //
 //////////////////////////////////////////////////////////////////////////////////////////
 
@@ -36,7 +36,7 @@
 //
 ////////////////////////////////////////////////////////////////////////////////////////
 
-#ifdef TEENSYUSBAUDIOMIDI
+#ifdef CWKEYERSHIELD
 #undef USBMIDI
 #undef MOCOLUFA
 #undef POTPIN
@@ -64,17 +64,17 @@
 //
 ////////////////////////////////////////////////////////////////////////////////////////
 
-#ifndef TEENSY_ANALOG_SIDEVOL
-#define TEENSY_ANALOG_SIDEVOL   -1
+#ifndef SHIELD_ANALOG_SIDEVOL
+#define SHIELD_ANALOG_SIDEVOL   -1
 #endif
-#ifndef TEENSY_ANALOG_SIDEFREQ
-#define TEENSY_ANALOG_SIDEFREQ  -1
+#ifndef SHIELD_ANALOG_SIDEFREQ
+#define SHIELD_ANALOG_SIDEFREQ  -1
 #endif
-#ifndef TEENSY_ANALOG_MASTERVOL
-#define TEENSY_ANALOG_MASTERVOL -1
+#ifndef SHIELD_ANALOG_MASTERVOL
+#define SHIELD_ANALOG_MASTERVOL -1
 #endif
-#ifndef TEENSY_ANALOG_SPEED
-#define TEENSY_ANALOG_SPEED     -1
+#ifndef SHIELD_ANALOG_SPEED
+#define SHIELD_ANALOG_SPEED     -1
 #endif
 
 ////////////////////////////////////////////////////////////////////////////////////////
@@ -83,14 +83,12 @@
 //
 ////////////////////////////////////////////////////////////////////////////////////////
 //
-//   MIDI (only with TEENSYUSBAUDIOMIDI, USBMIDI, or MOCOLUFA)
+//   MIDI (only with CWKEYERSHIELD, USBMIDI, or MOCOLUFA)
 //   =========================================================
 //
 // - key-up/down and PTT-on/off events are sent via MIDI to the computer.
-// - TEENSYUSBAUDIOMIDI: incoming MIDI messages my control the keyer
-//
-//
-// - the MIDI details (which notes and channels) are defined in config.h
+//   For USBMIDI and MOCOLUFA, this is coded here in the sketch, while for
+//   the CWKeyerShield library this is done inside the library.
 //
 ////////////////////////////////////////////////////////////////////////////////////////
 //
@@ -107,7 +105,7 @@
 //
 ////////////////////////////////////////////////////////////////////////////////////////
 //
-//   High-quality side tone (only with TEENSYUSBAUDIOMIDI)
+//   High-quality side tone (only with CWKEYERSHIELD)
 //   =====================================================
 //
 //   A high-quality side tone is generated, using either I2S or MQS output
@@ -211,8 +209,8 @@
 #include <EEPROM.h>
 #define MAGIC  0xA5   // EEPROM magic byte
 
-#ifdef TEENSYUSBAUDIOMIDI
-#include "src/TeensyUSBAudioMidi/TeensyUSBAudioMidi.h"
+#ifdef CWKEYERSHIELD
+#include "CWKeyerShield.h"
 #endif
 
 //
@@ -440,7 +438,7 @@ static uint8_t dot_held=0;   // dash paddle state at the beginning of the last d
 static uint8_t ptt_stat=0;   // current PTT status
 static uint8_t cw_stat=0;    // current CW output line status
 
-#ifdef TEENSYUSBAUDIOMIDI
+#ifdef CWKEYERSHIELD
 
 void speed_set(int s) {
   //
@@ -493,13 +491,13 @@ void keyer_hang_set(int h) {
   if (h >= 14)           PinConfig |= 0x30;  // 15 dot lengths hang time
 }
 
-TeensyUSBAudioMidi teensyusbaudiomidi(AUDIO_OUTPUT,
-                                      SIDETONE_FREQ,
-                                      SIDETONE_VOLUME,
-                                      TEENSY_ANALOG_SIDEVOL,
-                                      TEENSY_ANALOG_SIDEFREQ,
-                                      TEENSY_ANALOG_MASTERVOL,
-                                      TEENSY_ANALOG_SPEED);
+CWKeyerShield cwshield(SHIELD_AUDIO_OUTPUT,
+                       SHIELD_SIDETONE_FREQ,
+                       SHIELD_SIDETONE_VOLUME,
+                       SHIELD_ANALOG_SIDEVOL,
+                       SHIELD_ANALOG_SIDEFREQ,
+                       SHIELD_ANALOG_MASTERVOL,
+                       SHIELD_ANALOG_SPEED);
 #endif
 
 void init_eeprom();
@@ -564,8 +562,8 @@ void setup() {
 #endif
 
   init_eeprom();
-#ifdef TEENSYUSBAUDIOMIDI
- teensyusbaudiomidi.setup();
+#ifdef CWKEYERSHIELD
+ cwshield.setup();
 //
 // In what follows, if the constants are not #define'd,
 // The default values hard-wired into TeensyUSBAudioMIDI
@@ -574,25 +572,25 @@ void setup() {
 // can be over-written through *incoming* MIDI commands
 //
 #ifdef MY_TX_CHANNEL
-  teensyusbaudiomidi.set_midi_tx_ch(MY_TX_CHANNEL);
+  cwshield.set_midi_tx_ch(MY_TX_CHANNEL);
 #endif
 #ifdef MY_RX_CHANNEL
-  teensyusbaudiomidi.set_midi_rx_ch(MY_RX_CHANNEL);
+  cwshield.set_midi_rx_ch(MY_RX_CHANNEL);
 #endif
 #ifdef MY_KEYDOWN_NOTE
-  teensyusbaudiomidi.set_midi_keydown_note(MY_KEYDOWN_NOTE);
+  cwshield.set_midi_keydown_note(MY_KEYDOWN_NOTE);
 #endif
 #ifdef MY_CWPTT_NOTE
-  teensyusbaudiomidi.set_midi_cwptt_note(MY_CWPTT_NOTE);
+  cwshield.set_midi_cwptt_note(MY_CWPTT_NOTE);
 #endif
 #ifdef MY_SPEED_CNTRL
-  teensyusbaudiomidi.set_midi_speed_ctrl(MY_SPEED_CNTRL);
+  cwshield.set_midi_speed_ctrl(MY_SPEED_CNTRL);
 #endif
 #ifdef MY_FREQ_CNTRL
-  teensyusbaudiomidi.set_midi_freq_ctrl(MY_FREQ_CNTRL);
+  cwshield.set_midi_freq_ctrl(MY_FREQ_CNTRL);
 #endif
 #ifdef MY_MUTE_OPTION
-  teensyusbaudiomidi.set_cwptt_mute_option(1);
+  cwshield.set_cwptt_mute_option(1);
 #endif
 #endif
 }
@@ -687,8 +685,8 @@ void init_eeprom() {
 //////////////////////////////////////////////////////////////////////////////
 
 void DrainMIDI() {
-#ifdef TEENSYUSBAUDIOMIDI
-    teensyusbaudiomidi.loop();
+#ifdef CWKEYERSHIELD
+    cwshield.loop();
 #endif
 #ifdef USBMIDI
     if (usbMIDI.read()) {
@@ -817,8 +815,8 @@ void keydown() {
   NoteOn(MIDI_CW_NOTE, MIDI_CW_CHANNEL);
 #endif
 #endif
-#ifdef TEENSYUSBAUDIOMIDI                               // MIDI and sidetone
- teensyusbaudiomidi.key(1);
+#ifdef CWKEYERSHIELD                               // MIDI and sidetone
+ cwshield.key(1);
 #endif
 }
 
@@ -848,8 +846,8 @@ void keyup() {
   NoteOff(MIDI_CW_NOTE, MIDI_CW_CHANNEL);
 #endif
 #endif
-#ifdef TEENSYUSBAUDIOMIDI                               // MIDI and side tone
- teensyusbaudiomidi.key(0);
+#ifdef CWKEYERSHIELD                               // MIDI and side tone
+ cwshield.key(0);
 #endif
 }
 
@@ -876,8 +874,8 @@ void ptt_on() {
   NoteOn(MIDI_PTT_NOTE, MIDI_CW_CHANNEL);
 #endif
 #endif
-#ifdef TEENSYUSBAUDIOMIDI
-  teensyusbaudiomidi.cwptt(1);
+#ifdef CWKEYERSHIELD
+  cwshield.cwptt(1);
 #endif
 }
 
@@ -904,8 +902,8 @@ void ptt_off() {
   NoteOff(MIDI_PTT_NOTE, MIDI_CW_CHANNEL);
 #endif
 #endif
-#ifdef TEENSYUSBAUDIOMIDI
-  teensyusbaudiomidi.cwptt(0);
+#ifdef CWKEYERSHIELD
+  cwshield.cwptt(0);
 #endif
 }
 
@@ -1597,9 +1595,9 @@ void WinKey_state_machine() {
         break;
       case WKSPEED:
         HostSpeed=byte;
-#ifdef TEENSYUSBAUDIOMIDI
+#ifdef CWKEYERSHIELD
         if (HostSpeed != 0) {
-          teensyusbaudiomidi.cwspeed(HostSpeed);
+          cwshield.cwspeed(HostSpeed);
         }
 #endif
         winkey_state=FREE;
@@ -1686,9 +1684,9 @@ void WinKey_state_machine() {
             break;
           case  1:
             HostSpeed=byte;
-#ifdef TEENSYUSBAUDIOMIDI
+#ifdef CWKEYERSHIELD
             if (HostSpeed != 0) {
-              teensyusbaudiomidi.cwspeed(HostSpeed);
+              cwshield.cwspeed(HostSpeed);
             }
 #endif
             break;
@@ -1874,7 +1872,7 @@ void loop() {
   static unsigned long DotDebounce=0;      // used for "debouncing" dot paddle contact
   static unsigned long DashDebounce=0;     // used for "debouncing" dash paddle contact
   static unsigned long StraightDebounce=0; // used for "debouncing" straight key contact
-#ifdef TEENSYUSBAUDIOMIDI
+#ifdef CWKEYERSHIELD
   static uint8_t old_sidetone_enabled = 1;
 #endif
 
@@ -2034,10 +2032,10 @@ void loop() {
        //
        // Report side tone enable etc. to upstream software
        //
-#ifdef TEENSYUSBAUDIOMIDI
+#ifdef CWKEYERSHIELD
        if (old_sidetone_enabled != SIDETONE_ENABLED) {
           old_sidetone_enabled = SIDETONE_ENABLED;
-          teensyusbaudiomidi.sidetoneenable(old_sidetone_enabled);
+          cwshield.sidetoneenable(old_sidetone_enabled);
        }
 #endif
       break;
