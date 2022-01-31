@@ -492,12 +492,13 @@ void keyer_hang_set(int h) {
 }
 
 CWKeyerShield cwshield(SHIELD_AUDIO_OUTPUT,
-                       SHIELD_SIDETONE_FREQ,
-                       SHIELD_SIDETONE_VOLUME,
-                       SHIELD_ANALOG_SIDEVOL,
-                       SHIELD_ANALOG_SIDEFREQ,
-                       SHIELD_ANALOG_MASTERVOL,
-                       SHIELD_ANALOG_SPEED);
+                       SHIELD_ANALOG_SIDETONEVOLUME,
+                       SHIELD_ANALOG_SIDETONEFREQ,
+                       SHIELD_ANALOG_MASTERVOLUME,
+                       SHIELD_ANALOG_SPEED,
+                       SHIELD_DIGITAL_MICPTT,
+                       SHIELD_DIGITAL_PTTOUT,
+                       SHIELD_DIGITAL_CWOUT);
 #endif
 
 void init_eeprom();
@@ -567,21 +568,18 @@ void setup() {
 //
 // In what follows, if the constants are not #define'd,
 // The default values hard-wired into TeensyUSBAudioMIDI
-// are used.
-// Note that these values (no matter if #define'd or default)
-// can be over-written through *incoming* MIDI commands
+// are used. These settings are valild only until they
+// are changed by turning a pot or by an incoming MIDI
+// message
 //
-#ifdef MY_TX_CHANNEL
-  cwshield.set_midi_tx_ch(MY_TX_CHANNEL);
-#endif
-#ifdef MY_RX_CHANNEL
-  cwshield.set_midi_rx_ch(MY_RX_CHANNEL);
+#ifdef MY_RADIO_CHANNEL
+  cwshield.set_midi_radio_ch(MY_RADIO_CHANNEL);
 #endif
 #ifdef MY_KEYDOWN_NOTE
   cwshield.set_midi_keydown_note(MY_KEYDOWN_NOTE);
 #endif
 #ifdef MY_CWPTT_NOTE
-  cwshield.set_midi_cwptt_note(MY_CWPTT_NOTE);
+  cwshield.set_midi_ptt_note(MY_CWPTT_NOTE);
 #endif
 #ifdef MY_SPEED_CTRL
   cwshield.set_midi_speed_ctrl(MY_SPEED_CTRL);
@@ -592,6 +590,12 @@ void setup() {
 #ifdef MY_MUTE_OPTION
   cwshield.set_cwptt_mute_option(1);
 #endif
+#ifdef MY_DEFAULT_FREQ
+  cwshield.sidetonefrequency(MY_DEFAULT_FREQ/10);
+#endif
+#ifdef MY_DEFAULT_VOLUME
+  cwshield.sidetonevolume(MY_DEFAULT_VOLUME);
+#endif    
 #endif
 }
 
