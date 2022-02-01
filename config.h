@@ -3,6 +3,11 @@
 // Example config.h file that uses the CWKeyerShield library.
 // This library implements a latency-free side tone mixed into an USB audio output
 // stream, as well as MIDI output to the SDR program.
+// Furthermore, this library handles the CW and PTT output to the radio, both
+// via MIDI and via hardware lines. Therefore we define only digital INPUT
+// lines for the keyer (PaddleRight, PaddleLeft, StraightKey), while all
+// other digital I/O and analog input lines are defined for the CWKeyerShield
+// library (SHIELD_*)
 //
 ////////////////////////////////////////////////////////////////////////////
 
@@ -43,14 +48,13 @@
 
 ////////////////////////////////////////////////////////////////////////////
 //
-// Options for the CWKeyerShield library. Unlike the "hardware settings"
-// in the preceeding section, these values can be changed any time, and none
-// of these #defines is necessary.
+// run-time configurable settings for the CWKeyerShield library
+// (not necessary to define them if we are using the default values)
+// Note that settings the side-tone frequency/volume is only meaningful
+// if there are *no* pots to adjust them.
 //
-/////////////////////////////////////////////////////////////////////////////
-
-#define MY_RADIO_CHANNEL        1           // MIDI channel for communication with radio
-#define MY_KEYDOWN_NOTE         1           // MIDI note value for CW_KEYER_KEYDOWN to radio
-#define MY_CWPTT_NOTE           2           // MIDI note value for PTT to radio
-#define MY_SPEED_CTRL           3           // MIDI controller value for reporting speed to radio
-#define MY_FREQ_CTRL            4           // MIDI controller valule for reporting sidetone frequency to radio
+////////////////////////////////////////////////////////////////////////////
+//#define MY_MIDI_CHANNEL              10   // MIDI channel to be used by the keyer
+//#define MY_MUTE_OPTION                0   // set to 1 then RX audio is muted during CW PTT
+//#define MY_DEFAULT_FREQ             800   // initial setting of side tone frequency
+//#define MY_DEFAULT_VOLUME          0.20   // initial setting of side tone volume

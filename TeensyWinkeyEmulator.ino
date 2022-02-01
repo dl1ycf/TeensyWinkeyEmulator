@@ -60,25 +60,6 @@
 
 ////////////////////////////////////////////////////////////////////////////////////////
 //
-// Some variables are needed, set them to -1 if not defined
-//
-////////////////////////////////////////////////////////////////////////////////////////
-
-#ifndef SHIELD_ANALOG_SIDEVOL
-#define SHIELD_ANALOG_SIDEVOL   -1
-#endif
-#ifndef SHIELD_ANALOG_SIDEFREQ
-#define SHIELD_ANALOG_SIDEFREQ  -1
-#endif
-#ifndef SHIELD_ANALOG_MASTERVOL
-#define SHIELD_ANALOG_MASTERVOL -1
-#endif
-#ifndef SHIELD_ANALOG_SPEED
-#define SHIELD_ANALOG_SPEED     -1
-#endif
-
-////////////////////////////////////////////////////////////////////////////////////////
-//
 //                                MAIN FEATURES
 //
 ////////////////////////////////////////////////////////////////////////////////////////
@@ -440,6 +421,25 @@ static uint8_t cw_stat=0;    // current CW output line status
 
 #ifdef CWKEYERSHIELD
 
+////////////////////////////////////////////////////////////////////////////////////////
+//
+// Some variables are needed, set them to -1 if not defined
+//
+////////////////////////////////////////////////////////////////////////////////////////
+
+#ifndef SHIELD_ANALOG_SIDEVOL
+#define SHIELD_ANALOG_SIDEVOL   -1
+#endif
+#ifndef SHIELD_ANALOG_SIDEFREQ
+#define SHIELD_ANALOG_SIDEFREQ  -1
+#endif
+#ifndef SHIELD_ANALOG_MASTERVOL
+#define SHIELD_ANALOG_MASTERVOL -1
+#endif
+#ifndef SHIELD_ANALOG_SPEED
+#define SHIELD_ANALOG_SPEED     -1
+#endif
+
 void speed_set(int s) {
   //
   // Interface to let the TeensyUSBAudioMidi class
@@ -564,31 +564,14 @@ void setup() {
 
   init_eeprom();
 #ifdef CWKEYERSHIELD
+
  cwshield.setup();
-//
-// In what follows, if the constants are not #define'd,
-// The default values hard-wired into TeensyUSBAudioMIDI
-// are used. These settings are valild only until they
-// are changed by turning a pot or by an incoming MIDI
-// message
-//
-#ifdef MY_RADIO_CHANNEL
-  cwshield.set_midi_radio_ch(MY_RADIO_CHANNEL);
-#endif
-#ifdef MY_KEYDOWN_NOTE
-  cwshield.set_midi_keydown_note(MY_KEYDOWN_NOTE);
-#endif
-#ifdef MY_CWPTT_NOTE
-  cwshield.set_midi_ptt_note(MY_CWPTT_NOTE);
-#endif
-#ifdef MY_SPEED_CTRL
-  cwshield.set_midi_speed_ctrl(MY_SPEED_CTRL);
-#endif
-#ifdef MY_FREQ_CTRL
-  cwshield.set_midi_freq_ctrl(MY_FREQ_CTRL);
-#endif
+
+#ifdef MY_MIDI_CHANNEL
+  cwshield.set_midi_channel(MY_MIDI_CHANNEL);
+#endif  
 #ifdef MY_MUTE_OPTION
-  cwshield.set_cwptt_mute_option(1);
+  cwshield.set_cwptt_mute_option(MY_MUTE_OPTION);
 #endif
 #ifdef MY_DEFAULT_FREQ
   cwshield.sidetonefrequency(MY_DEFAULT_FREQ/10);
