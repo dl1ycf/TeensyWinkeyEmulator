@@ -286,7 +286,7 @@ static uint8_t Speed=21;                // overridden by the speed pot in standa
 static uint8_t HostSpeed=0;             // if nonzero, it overrides other speed settings
 static uint8_t Sidetone=5;              // 800 Hz
 static uint8_t Weight=50;               // used to modify dit/dah length
-static uint8_t LeadIn=15;               // PTT Lead-in time (in units of 10 ms)
+static uint8_t LeadIn=5;                // PTT Lead-in time (in units of 10 ms)
 static uint8_t Tail=0;                  // PTT tail (in 10 ms), zero means "use hang bits"
 static uint8_t MinWPM=8;                // CW speed when speed pot maximally CCW
 static uint8_t WPMrange=20;             // CW speed range for SpeedPot
@@ -427,17 +427,26 @@ static uint8_t cw_stat=0;    // current CW output line status
 //
 ////////////////////////////////////////////////////////////////////////////////////////
 
-#ifndef SHIELD_ANALOG_SIDEVOL
-#define SHIELD_ANALOG_SIDEVOL   -1
+#ifndef SHIELD_ANALOG_SIDETONEVOLUME
+#define SHIELD_ANALOG_SIDETONEVOLUME   -1
 #endif
-#ifndef SHIELD_ANALOG_SIDEFREQ
-#define SHIELD_ANALOG_SIDEFREQ  -1
+#ifndef SHIELD_ANALOG_SIDETONEFREQ
+#define SHIELD_ANALOG_SIDETONEFREQ     -1
 #endif
-#ifndef SHIELD_ANALOG_MASTERVOL
-#define SHIELD_ANALOG_MASTERVOL -1
+#ifndef SHIELD_ANALOG_MASTERVOLUME
+#define SHIELD_ANALOG_MASTERVOLUME     -1
 #endif
 #ifndef SHIELD_ANALOG_SPEED
-#define SHIELD_ANALOG_SPEED     -1
+#define SHIELD_ANALOG_SPEED            -1
+#endif
+#ifndef SHIELD_DIGITAL_MICPTT
+#define SHIELD_DIGITAL_MICPTT          -1
+#endif
+#ifndef SHIELD_DIGITAL_PTTOUT
+#define SHIELD_DIGITAL_PTTOUT          -1
+#endif
+#ifndef SHIELD_DIGITAL_CWOUT
+#define SHIELD_DIGITAL_CWOUT           -1
 #endif
 
 void speed_set(int s) {
@@ -708,23 +717,6 @@ static void NoteOff(int note, int chan) {
 
 //////////////////////////////////////////////////////////////////////////////
 //
-// for  MIDI events sent via USBMIDI
-//
-//////////////////////////////////////////////////////////////////////////////
-#ifdef USBMIDI
-static void NoteOn(int note, int chan) {
-  usbMIDI.sendNoteOn(note, 127, chan);
-  usbMIDI.send_now();
-}
-
-static void NoteOff(int note, int chan){
-  usbMIDI.sendNoteOff(note, 0, chan);
-  usbMIDI.send_now();
-}
-#endif
-
-//////////////////////////////////////////////////////////////////////////////
-//
 // Read one byte from host
 //
 //////////////////////////////////////////////////////////////////////////////
@@ -797,9 +789,10 @@ void keydown() {
 #ifdef CW2                                              //active-low CW line
   digitalWrite(CW2,LOW);
 #endif
-#if (MIDI_CW_NOTE >= 0 && MIDI_CW_CHANNEL >= 0)
-#if defined(MOCOLUFA) || defined(USBMIDI)               // MIDI message
-  NoteOn(MIDI_CW_NOTE, MIDI_CW_CHANNEL);
+#if defined(MOCOLUFA) || defined(USBMIDI) 
+#if (MY_KEYDOWN_NOTE >= 0 && MY_MIDI_CHANNEL >= 0)
+  usbMIDI.sendNoteOn(MY_KEYDOWN_NOTE, 127, MY_MIDI_CHANNEL);
+  usbMIDI.send_now();
 #endif
 #endif
 #ifdef CWKEYERSHIELD                               // MIDI and sidetone
@@ -828,9 +821,10 @@ void keyup() {
 #ifdef CW2
   digitalWrite(CW2,HIGH);                               // active-low CW output
 #endif
-#if (MIDI_CW_NOTE >= 0 && MIDI_CW_CHANNEL >= 0)
-#if defined(MOCOLUFA) || defined(USBMIDI)               // MIDI message
-  NoteOff(MIDI_CW_NOTE, MIDI_CW_CHANNEL);
+#if defined(MOCOLUFA) || defined(USBMIDI) 
+#if (MY_KEYDOWN_NOTE >= 0 && MY_MIDI_CHANNEL >= 0)
+  usbMIDI.sendNoteOn(MY_KEYDOWN_NOTE, 0, MY_MIDI_CHANNEL);
+  usbMIDI.send_now();
 #endif
 #endif
 #ifdef CWKEYERSHIELD                               // MIDI and side tone
@@ -856,9 +850,9 @@ void ptt_on() {
 #ifdef PTT2                                               // active low PTT line
   digitalWrite(PTT2,LOW);
 #endif
-#if (MIDI_PTT_NOTE >= 0 && MIDI_CW_CHANNEL >= 0)
-#if defined(MOCOLUFA) || defined(USBMIDI)                 // MIDI message
-  NoteOn(MIDI_PTT_NOTE, MIDI_CW_CHANNEL);
+#if defined(MOCOLUFA) || defined(USBMIDI) 
+#if (MY_KEYDOWN_NOTE >= 0 && MY_MIDI_CHANNEL >= 0)
+  usbMIDI.sendNoteOn(MY_CWPTT_NOTE, 127, MY_MIDI_CHANNEL);
 #endif
 #endif
 #ifdef CWKEYERSHIELD
@@ -884,11 +878,12 @@ void ptt_off() {
 #ifdef PTT2
   digitalWrite(PTT2,HIGH);                                // active low PTT line
 #endif
-#if (MIDI_PTT_NOTE >= 0 && MIDI_CW_CHANNEL >= 0)
-#if defined(MOCOLUFA) || defined(USBMIDI)                  // MIDI message
-  NoteOff(MIDI_PTT_NOTE, MIDI_CW_CHANNEL);
+#if defined(MOCOLUFA) || defined(USBMIDI) 
+#if (MY_KEYDOWN_NOTE >= 0 && MY_MIDI_CHANNEL >= 0)
+  usbMIDI.sendNoteOn(MY_CWPTT_NOTE, 0, MY_MIDI_CHANNEL);
 #endif
 #endif
+
 #ifdef CWKEYERSHIELD
   cwshield.cwptt(0);
 #endif
