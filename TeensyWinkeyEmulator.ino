@@ -602,15 +602,15 @@ void read_from_eeprom() {
 //
 // Called upons startup and from an Admin:Reset command.
 //
-// If EEPROM contains valid data (magic byte at 0x00 and zero at 0x0F),
+// If EEPROM contains valid data (magic byte at 0x00),
 // init variables from EEPROM.
 //
-// If magic bytes are not found, nothing is done.
+// If magic byte is not found, nothing is done.
 //
   uint8_t i;
 
 
-  if (EEPROM.read(0) == MAGIC && EEPROM.read(15) == 0) {
+  if (EEPROM.read(0) == MAGIC) {
      ModeRegister = EEPROM.read( 1);
      i            = EEPROM.read( 2);
      if (i >= 5 && i <= 65) Speed=i;
@@ -658,14 +658,14 @@ void write_to_eeprom() {
 //////////////////////////////////////////////////////////////////////////////
 //
 // init_eeprom:
-// if eeprom magic bytes are not set: write current setting to eeprom
-// if eeprom magic bytes are     set: read  settings from eeptorm
+// if eeprom magic byte is not set: write current setting to eeprom
+// if eeprom magic byte is     set: read  settings from eeptorm
 //
 // called once upon startup
 //////////////////////////////////////////////////////////////////////////////
 
 void init_eeprom() {
-  if (EEPROM.read(0) == MAGIC && EEPROM.read(15) == 0) {
+  if (EEPROM.read(0) == MAGIC) {
     read_from_eeprom();
   } else {
     write_to_eeprom();
@@ -675,8 +675,8 @@ void init_eeprom() {
 
 //////////////////////////////////////////////////////////////////////////////
 //
-// MIDI might require to drain or process incoming MIDI messages
-//
+// MIDI might require to drain or process incoming MIDI messages, so this
+// one is periodically called.
 //
 //////////////////////////////////////////////////////////////////////////////
 
@@ -695,25 +695,6 @@ void DrainMIDI() {
     }
 #endif
 }
-
-//////////////////////////////////////////////////////////////////////////////
-//
-// for  MIDI events sent via serial line
-//
-//////////////////////////////////////////////////////////////////////////////
-#ifdef MOCOLUFA
-static void NoteOn(int note, int chan) {
-  Serial.write(0x90 | (--chan & 0x0F));
-  Serial.write(note);
-  Serial.write(127);
-}
-
-static void NoteOff(int note, int chan) {
-  Serial.write(0x80 | (--chan & 0x0F));
-  Serial.write(note);
-  Serial.write(0);
-}
-#endif
 
 //////////////////////////////////////////////////////////////////////////////
 //
@@ -776,25 +757,34 @@ void keydown() {
   if (cw_stat) return;
   cw_stat=1;
   //
-  // Actions: side tone on (if enabled), raise hardware line, send MIDI NoteOn message
+  // Actions: side tone on (if enabled), set hardware line(s), send MIDI  message
   //
 #ifdef TONEPIN                                          // square wave (if enabled)
   if (SIDETONE_ENABLED) {
     tone(TONEPIN, myfreq);
   }
 #endif
+
 #ifdef CW1                                              // active-high CW output
   digitalWrite(CW1,HIGH);
 #endif
+
 #ifdef CW2                                              //active-low CW line
   digitalWrite(CW2,LOW);
 #endif
-#if defined(MOCOLUFA) || defined(USBMIDI) 
+
 #if (MY_KEYDOWN_NOTE >= 0 && MY_MIDI_CHANNEL >= 0)
+#if defined(USBMIDI) 
   usbMIDI.sendNoteOn(MY_KEYDOWN_NOTE, 127, MY_MIDI_CHANNEL);
   usbMIDI.send_now();
 #endif
+#if defined(MOCOLUFA)
+  Serial.write(0x90 | (MIDI_CHANNEL-1) & 0x0F));
+  Serial.write(MY_KEYDOWN_NOTE);
+  Serial.write(127);
 #endif
+#endif
+
 #ifdef CWKEYERSHIELD                               // MIDI and sidetone
  cwshield.key(1);
 #endif
@@ -815,18 +805,27 @@ void keyup() {
 #ifdef TONEPIN                                          // square wave line
   noTone(TONEPIN);
 #endif
+
 #ifdef CW1                                              // active-high CW output
   digitalWrite(CW1,LOW);
 #endif
+
 #ifdef CW2
   digitalWrite(CW2,HIGH);                               // active-low CW output
 #endif
-#if defined(MOCOLUFA) || defined(USBMIDI) 
+
 #if (MY_KEYDOWN_NOTE >= 0 && MY_MIDI_CHANNEL >= 0)
+#if defined(USBMIDI) 
   usbMIDI.sendNoteOn(MY_KEYDOWN_NOTE, 0, MY_MIDI_CHANNEL);
   usbMIDI.send_now();
 #endif
+#if defined(MOCOLUFA)
+  Serial.write(0x90 | (MIDI_CHANNEL-1) & 0x0F));
+  Serial.write(MY_KEYDOWN_NOTE);
+  Serial.write(0);
 #endif
+#endif
+
 #ifdef CWKEYERSHIELD                               // MIDI and side tone
  cwshield.key(0);
 #endif
@@ -847,14 +846,22 @@ void ptt_on() {
 #ifdef PTT1                                               // active high PTT line
   digitalWrite(PTT1,HIGH);
 #endif
+
 #ifdef PTT2                                               // active low PTT line
   digitalWrite(PTT2,LOW);
 #endif
-#if defined(MOCOLUFA) || defined(USBMIDI) 
-#if (MY_KEYDOWN_NOTE >= 0 && MY_MIDI_CHANNEL >= 0)
+
+#if (MY_CWPTT_NOTE >= 0 && MY_MIDI_CHANNEL >= 0)
+#if defined(USBMIDI) 
   usbMIDI.sendNoteOn(MY_CWPTT_NOTE, 127, MY_MIDI_CHANNEL);
 #endif
+#if defined(MOCOLUFA)
+  Serial.write(0x90 | (MIDI_CHANNEL-1) & 0x0F));
+  Serial.write(MY_CWPTT_NOTE);
+  Serial.write(127);
 #endif
+#endif
+
 #ifdef CWKEYERSHIELD
   cwshield.cwptt(1);
 #endif
@@ -875,12 +882,19 @@ void ptt_off() {
 #ifdef PTT1
   digitalWrite(PTT1,LOW);                                 // active high PTT line
 #endif
+
 #ifdef PTT2
   digitalWrite(PTT2,HIGH);                                // active low PTT line
 #endif
-#if defined(MOCOLUFA) || defined(USBMIDI) 
-#if (MY_KEYDOWN_NOTE >= 0 && MY_MIDI_CHANNEL >= 0)
+
+#if (MY_CWPTT_NOTE >= 0 && MY_MIDI_CHANNEL >= 0)
+#if defined(USBMIDI) 
   usbMIDI.sendNoteOn(MY_CWPTT_NOTE, 0, MY_MIDI_CHANNEL);
+#endif
+#if defined(MOCOLUFA)
+  Serial.write(0x90 | (MIDI_CHANNEL-1) & 0x0F));
+  Serial.write(MY_CWPTT_NOTE);
+  Serial.write(0);
 #endif
 #endif
 
@@ -1423,15 +1437,14 @@ void WinKey_state_machine() {
       // character. Since a complete dump takes much time, check
       // for incoming MIDI messages frequently.
       //
-      for (inum=0; inum<16; inum++) {
+      ToHost(0xA5);  // this must  be 0xA5 no matter what our "magic" byte is
+      for (inum=1; inum<16; inum++) {
         ToHost(EEPROM.read(inum));
         DrainMIDI();
-        delay(12); // at 1200 baud, each character takes about 9 msec
       }
       for (inum=16; inum < 256; inum++) {
           ToHost(0);
           DrainMIDI();
-          delay(12);
       }
       winkey_state=FREE;
       break;
@@ -1442,7 +1455,10 @@ void WinKey_state_machine() {
       // no delay is required upon reading, but check for
       // incoming MIDI messages frequently.
       //
-      for (inum=0; inum<16; inum++) {
+      while (!ByteAvailable()) ;
+      byte=FromHost();
+      EEPROM.update(0, MAGIC);
+      for (inum=1; inum<16; inum++) {
         while (!ByteAvailable()) ;
         byte=FromHost();
         EEPROM.update(inum, byte);
