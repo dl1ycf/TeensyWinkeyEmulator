@@ -281,12 +281,12 @@ enum WKSTAT {
 //   b2:    echo characters received from the serial line as they are transmitted
 //
 
-static uint8_t ModeRegister=0x54;       // echos, no swap, Iambic-A by default
+static uint8_t ModeRegister=0x10;       // Iambic-A by default
 static uint8_t Speed=21;                // overridden by the speed pot in standalong mode
 static uint8_t HostSpeed=0;             // if nonzero, it overrides other speed settings
 static uint8_t Sidetone=5;              // 800 Hz
 static uint8_t Weight=50;               // used to modify dit/dah length
-static uint8_t LeadIn=5;                // PTT Lead-in time (in units of 10 ms)
+static uint8_t LeadIn=0;                // PTT Lead-in time (in units of 10 ms)
 static uint8_t Tail=0;                  // PTT tail (in 10 ms), zero means "use hang bits"
 static uint8_t MinWPM=8;                // CW speed when speed pot maximally CCW
 static uint8_t WPMrange=20;             // CW speed range for SpeedPot
@@ -295,8 +295,7 @@ static uint8_t Compensation=0;          // Used to modify dit/dah lengths
 static uint8_t Farnsworth=10;           // Farnsworth speed (10 means: no Farnsworth)
 static uint8_t PaddlePoint;             // ignored
 static uint8_t Ratio=50;                // dah/dit ratio = (3*ratio)/50
-static uint8_t PinConfig=0x2F;          // PTT and side tone enabled, 1.67 word space hang time, keyer enabled
-
+static uint8_t PinConfig=0x0E;          // PTT disabled
 //
 // Macros to read the ModeRegister
 //
