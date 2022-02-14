@@ -583,15 +583,6 @@ void setup() {
 
  cwshield.setup();
 
-#ifdef MY_MIDI_CHANNEL
-  cwshield.set_midi_channel(MY_MIDI_CHANNEL);
-#endif
-#ifdef MY_PTT_NOTE
-  cwshield.set_ptt_note(MY_PTT_NOTE);
-#endif
-#ifdef MY_KEYDOWN_NOTE
-  cwshield.set_keydown_note(MY_KEYDOWN_NOTE);
-#endif      
 #ifdef MY_MUTE_OPTION
   cwshield.set_cwptt_mute_option(MY_MUTE_OPTION);
 #endif
