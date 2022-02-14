@@ -188,7 +188,6 @@
 ////////////////////////////////////////////////////////////////////////////////////////
 
 #include <EEPROM.h>
-#define MAGIC  0xA5   // EEPROM magic byte
 
 #ifdef CWKEYERSHIELD
 #include "CWKeyerShield.h"
@@ -266,8 +265,41 @@ enum WKSTAT {
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////
 //
-// EEPROM variables:
+// EEPROM variables
 //
+// The EEPROM layout of the K1EL chip. The first 24 bytes encode
+// settings etc., from addr=24 to addr=255 is the storage for the
+// messages (unused in this program). We only use the EEPROM at
+// addresses 1-14. Byte 0 is fixed (magic byte),
+// bytes 15-23 are initialized with a reasonable
+// constant and bytes 24-255 are left empty.
+//
+// ADDR  Name          Explanation
+// =================================================================
+//   0   Magic         Magic Byte (0xA5)
+//   1   ModeRegister  see blowe
+//   2   Speed         in wpm, if pot not used
+//   3   Sidetone      0x05 encodes 800 Hz, see WK manual
+//   4   Weight        used to modify dit/dah length
+//   5   PTT LeadIn    PTT lead-in time in units of 10 msec
+//   6   PTT Tail      PTT tail time in units of 10 msec
+//   7   MinWPM        WPM when speed pot is at minimum
+//   8   WpmRange      WPM range of speed pot
+//   9   Extension     used to elongate first dit/dah after PTT
+//  10   Compensation  Key compensation
+//  11   Farnsworth    Farnsworth speed (10 = no Farnsworth)
+//  12   PaddlePoint   Paddle Switch-point (default: 50)
+//  13   Ratio         Dah/Dit ratio (50 = 3:1)
+//  14   PinConfig     see below
+//  15   DontCare      ignored, unused. Filled with constant 0.
+//  16   CmdWpm        Speed (WPM) for commands (unused, default: 15 wpm)
+//  17   FreePtr       first free position in character buffer (0x18 if no messages are stored)
+//  18   Msg1          Start addr of message #1  (0x10 if empty)
+//  19   Msg2          Start addr of message #2  (0x10 if empty)
+//  20   Msg3          Start addr of message #3  (0x10 if empty)
+//  21   Msg4          Start addr of message #4  (0x10 if empty)
+//  22   Msg5          Start addr of message #5  (0x10 if empty)
+//  23   Msg6          Start addr of message #6  (0x10 if empty)
 //
 // bits used in PinConfig:
 //   b0:    PTT enable/disable bit, if PTT disabled, LeadIn times will have no effect
@@ -280,22 +312,39 @@ enum WKSTAT {
 //   b3:    swap paddles
 //   b2:    echo characters received from the serial line as they are transmitted
 //
+// NOTE:
+// When reporting EEPROM contents, report un-used parameters as well, to be compatible with
+// WinKey programs
+//
 
+const static uint8_t MAGIC=0xA5;        // EEPROM magic byte
 static uint8_t ModeRegister=0x10;       // Iambic-A by default
 static uint8_t Speed=21;                // overridden by the speed pot in standalong mode
-static uint8_t HostSpeed=0;             // if nonzero, it overrides other speed settings
 static uint8_t Sidetone=5;              // 800 Hz
 static uint8_t Weight=50;               // used to modify dit/dah length
 static uint8_t LeadIn=0;                // PTT Lead-in time (in units of 10 ms)
 static uint8_t Tail=0;                  // PTT tail (in 10 ms), zero means "use hang bits"
 static uint8_t MinWPM=8;                // CW speed when speed pot maximally CCW
 static uint8_t WPMrange=20;             // CW speed range for SpeedPot
-static uint8_t Extension=0;             // ignored
+static uint8_t Extension=0;             // ignored in this code (1st extension)
 static uint8_t Compensation=0;          // Used to modify dit/dah lengths
 static uint8_t Farnsworth=10;           // Farnsworth speed (10 means: no Farnsworth)
-static uint8_t PaddlePoint;             // ignored
+static uint8_t PaddlePoint=50;          // ignored in this code (Paddle Switchpoint setting)
 static uint8_t Ratio=50;                // dah/dit ratio = (3*ratio)/50
 static uint8_t PinConfig=0x0E;          // PTT disabled
+const static uint8_t DontCare=0;        // seems to be unused
+const static uint8_t CmdWpm=15;         // ignored in this code (Command WPM setting)
+const static uint8_t FreePtr=0x18;      // free space in message memory. Initially 24.
+const static uint8_t MsgPtr1=0x10;      // Pointer to Message #1
+const static uint8_t MsgPtr2=0x10;      // Pointer to Message #2
+const static uint8_t MsgPtr3=0x10;      // Pointer to Message #3
+const static uint8_t MsgPtr4=0x10;      // Pointer to Message #4
+const static uint8_t MsgPtr5=0x10;      // Pointer to Message #5
+const static uint8_t MsgPtr6=0x10;      // Pointer to Message #6
+
+
+static uint8_t HostSpeed=0;             // Speed from host in host-mode.
+                                        // If nonzero, it overrides other speed settings
 //
 // Macros to read the ModeRegister
 //
@@ -315,48 +364,6 @@ static uint8_t PinConfig=0x0E;          // PTT disabled
 #define PTT_ENABLED      (PinConfig & 0x01)
 #define HANGBITS         ((PinConfig & 0x30) >> 4)
 
-
-//////////////////////////////////////////////////////////////////////////////////////////////////////
-//
-// These settings are stored in the EEPROM upon program start when it is found "empty"
-// (the two magic bytes were not found).
-// If there is already data in the eprom, these variables are over-written upon program start
-// with data from the EEPROM.
-//
-// EEPROM data is restored upon program start, and upon Admin:Close commands. Thus it governs
-// the "standalone" settings.
-//
-// Note that if using a speed pot, the "speed" value is set to zero upon EEPROM read to make the
-// speed pot "active".
-//
-// After Admin:Open (when entering "hostmode") the standalone
-// settings remain effective until explicitly changed.
-//
-// The EEPROM can be changed through the WinKey protocol "ReadEEPROM" and "WriteEEPROM"
-// commands, as implemented in WinKeyer programs available for Windows, MacOS, and Linux.
-//
-// Upon program start, the program default settings are stored in the EEPROM if is is still "blank".
-//
-// EEPROM layout:
-//
-// Byte  0:    MAGIC                 (magic byte)
-// Byte  1:    ModeRegister
-// Byte  2:    Speed
-// Byte  3:    Sidetone
-// Byte  4:    Weight
-// Byte  5:    LeadIn
-// Byte  6:    Tail
-// Byte  7:    MinWPM
-// Byte  8:    WPMrange
-// Byte  9:    Extension
-// Byte 10:    Compensation
-// Byte 11:    Farnsworth
-// Byte 12:    PaddlePoint
-// Byte 13:    Ratio
-// Byte 14:    PinConfig
-// Byte 15:    0x00                 (magic byte)
-//
-//////////////////////////////////////////////////////////////////////////////////////////////////////
 
 static uint8_t WKstatus=0xC0;           // reported to host when it changes
 
@@ -447,6 +454,7 @@ static uint8_t cw_stat=0;    // current CW output line status
 #ifndef SHIELD_DIGITAL_CWOUT
 #define SHIELD_DIGITAL_CWOUT           -1
 #endif
+
 
 void speed_set(int s) {
   //
@@ -577,7 +585,13 @@ void setup() {
 
 #ifdef MY_MIDI_CHANNEL
   cwshield.set_midi_channel(MY_MIDI_CHANNEL);
-#endif  
+#endif
+#ifdef MY_PTT_NOTE
+  cwshield.set_ptt_note(MY_PTT_NOTE);
+#endif
+#ifdef MY_KEYDOWN_NOTE
+  cwshield.set_keydown_note(MY_KEYDOWN_NOTE);
+#endif      
 #ifdef MY_MUTE_OPTION
   cwshield.set_cwptt_mute_option(MY_MUTE_OPTION);
 #endif
@@ -633,10 +647,15 @@ void read_from_eeprom() {
 // write_to_eeprom:
 // write magic bytes and current settings to eeprom
 //
+// This is currently ONLY used to write compile-time default settings into
+// the EEPROM, if upon startup the EEPROM is found "empty".
+//
+// The EEPROM is further updated by the "LOAD EEPROM" admin command.
+//
 //////////////////////////////////////////////////////////////////////////////
 
 void write_to_eeprom() {
-    EEPROM.update( 0, MAGIC);
+    EEPROM.update( 0, MAGIC);           // This position will not be modified
     EEPROM.update( 1, ModeRegister);
     EEPROM.update( 2, Speed);
     EEPROM.update( 3, Sidetone);
@@ -651,7 +670,15 @@ void write_to_eeprom() {
     EEPROM.update(12, PaddlePoint);
     EEPROM.update(13, Ratio);
     EEPROM.update(14, PinConfig);
-    EEPROM.update(15, 0x00);
+    EEPROM.update(15, DontCare);        // This position will not be modified
+    EEPROM.update(16, CmdWpm);          // This position will not be modified
+    EEPROM.update(17, FreePtr);         // This position will not be modified
+    EEPROM.update(18, MsgPtr1);         // This position will not be modified
+    EEPROM.update(19, MsgPtr2);         // This position will not be modified
+    EEPROM.update(20, MsgPtr3);         // This position will not be modified
+    EEPROM.update(21, MsgPtr4);         // This position will not be modified
+    EEPROM.update(22, MsgPtr5);         // This position will not be modified
+    EEPROM.update(23, MsgPtr6);         // This position will not be modified
 }
 
 //////////////////////////////////////////////////////////////////////////////
@@ -778,7 +805,7 @@ void keydown() {
   usbMIDI.send_now();
 #endif
 #if defined(MOCOLUFA)
-  Serial.write(0x90 | (MIDI_CHANNEL-1) & 0x0F));
+  Serial.write(0x90 | (MY_MIDI_CHANNEL-1) & 0x0F));
   Serial.write(MY_KEYDOWN_NOTE);
   Serial.write(127);
 #endif
@@ -819,7 +846,7 @@ void keyup() {
   usbMIDI.send_now();
 #endif
 #if defined(MOCOLUFA)
-  Serial.write(0x90 | (MIDI_CHANNEL-1) & 0x0F));
+  Serial.write(0x90 | (MY_MIDI_CHANNEL-1) & 0x0F));
   Serial.write(MY_KEYDOWN_NOTE);
   Serial.write(0);
 #endif
@@ -855,7 +882,7 @@ void ptt_on() {
   usbMIDI.sendNoteOn(MY_CWPTT_NOTE, 127, MY_MIDI_CHANNEL);
 #endif
 #if defined(MOCOLUFA)
-  Serial.write(0x90 | (MIDI_CHANNEL-1) & 0x0F));
+  Serial.write(0x90 | (MY_MIDI_CHANNEL-1) & 0x0F));
   Serial.write(MY_CWPTT_NOTE);
   Serial.write(127);
 #endif
@@ -891,7 +918,7 @@ void ptt_off() {
   usbMIDI.sendNoteOn(MY_CWPTT_NOTE, 0, MY_MIDI_CHANNEL);
 #endif
 #if defined(MOCOLUFA)
-  Serial.write(0x90 | (MIDI_CHANNEL-1) & 0x0F));
+  Serial.write(0x90 | (MY_MIDI_CHANNEL-1) & 0x0F));
   Serial.write(MY_CWPTT_NOTE);
   Serial.write(0);
 #endif
@@ -1428,42 +1455,66 @@ void WinKey_state_machine() {
       break;
      case RDPROM:
       // dump EEPROM command
-      // only dump bytes 0 through 15,
+      // only dump bytes 0 through 23,
       // report the others being zero
       // Nothing must interrupt us, therefore no state machine
       // at 1200 baud, each character has a mere transmission time
       // of more than 8 msec, so do a pause of 12 msec after each
       // character. Since a complete dump takes much time, check
-      // for incoming MIDI messages frequently.
+      // for incoming MIDI messages frequently (every 6 msec or so).
       //
-      ToHost(0xA5);  // this must  be 0xA5 no matter what our "magic" byte is
-      for (inum=1; inum<16; inum++) {
+      ToHost(0xA5);  // this must  be 0xA5 no matter what our "magic" byte we use
+      delay(6);
+      DrainMIDI();
+      delay(6);
+      DrainMIDI();
+      for (inum=1; inum<24; inum++) {
         ToHost(EEPROM.read(inum));
+        delay(6);
+        DrainMIDI();
+        delay(6);
         DrainMIDI();
       }
-      for (inum=16; inum < 256; inum++) {
-          ToHost(0);
-          DrainMIDI();
+      for (inum=24; inum< 256; inum++) {
+        ToHost(0);
+        delay(6);
+        DrainMIDI();
+        delay(6);
+        DrainMIDI();
       }
       winkey_state=FREE;
       break;
     case WRPROM:
       //
-      // Load EEPROM command
-      // nothing must interrupt us, hence no state machine
+      // Load EEPROM command. Only load bytes at addr
+      // 0 to 16. Leave bytes describing the lengths of
+      // the messages and the message storage untouched,
+      // since we do not use it.
+      // Nothing must interrupt us, hence no state machine
       // no delay is required upon reading, but check for
-      // incoming MIDI messages frequently.
+      // incoming MIDI messages after each byte received.
+      //
+      // a) read the first "magic" byte (MUST be 0xA5),
+      //    but store "our" magic byte at address 0
       //
       while (!ByteAvailable()) ;
-      byte=FromHost();
+      byte=FromHost(); // MUST be 0xA5
+      DrainMIDI();
       EEPROM.update(0, MAGIC);
-      for (inum=1; inum<16; inum++) {
+      //
+      // b) read EEPROM settings from ModeRegister (addr=1)
+      //    to PinConfig (addr=14) and store into EEPROM
+      //
+      for (inum=1; inum<15; inum++) {
         while (!ByteAvailable()) ;
         byte=FromHost();
-        EEPROM.update(inum, byte);
         DrainMIDI();
+        EEPROM.update(inum, byte);
       }
-      for (inum=16; inum<256; inum++) {
+      //
+      // c) read (and ignore) all the rest. 
+      //
+      for (inum=15; inum<256; inum++) {
         while (!ByteAvailable()) ;
         byte=FromHost();
         DrainMIDI();
