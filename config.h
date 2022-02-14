@@ -50,5 +50,7 @@
 //
 ////////////////////////////////////////////////////////////////////////////
 
+#define MY_MIDI_CHANNEL              10   // default MIDI channel to use
+#define MY_PTT_NOTE                  18   // default note for PTT on/off
+#define MY_KEYDOWN_NOTE              17   // default note for KeyDown
 #define MY_MUTE_OPTION                0   // set to 1 then RX audio is muted during CW PTT
-

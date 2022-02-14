@@ -46,7 +46,7 @@
 // if there are *no* pots to adjust them.
 //
 ////////////////////////////////////////////////////////////////////////////
-//#define MY_MIDI_CHANNEL              10   // MIDI channel to be used by the keyer
-//#define MY_MUTE_OPTION                0   // set to 1 then RX audio is muted during CW PTT
-//#define MY_DEFAULT_FREQ             800   // initial setting of side tone frequency
-//#define MY_DEFAULT_VOLUME          0.20   // initial setting of side tone volume
+#define MY_MIDI_CHANNEL              10   // MIDI channel to be used by the keyer
+#define MY_MUTE_OPTION                0   // set to 1 then RX audio is muted during CW PTT
+#define MY_DEFAULT_FREQ             800   // initial setting of side tone frequency
+#define MY_DEFAULT_VOLUME          0.20   // initial setting of side tone volume
