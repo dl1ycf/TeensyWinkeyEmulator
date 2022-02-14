@@ -291,15 +291,15 @@ enum WKSTAT {
 //  12   PaddlePoint   Paddle Switch-point (default: 50)
 //  13   Ratio         Dah/Dit ratio (50 = 3:1)
 //  14   PinConfig     see below
-//  15   DontCare      ignored, unused. Filled with constant 0.
+//  15   k12ext        special settings (additional letter space, zero cuts, etc.)
 //  16   CmdWpm        Speed (WPM) for commands (unused, default: 15 wpm)
 //  17   FreePtr       first free position in character buffer (0x18 if no messages are stored)
-//  18   Msg1          Start addr of message #1  (0x10 if empty)
-//  19   Msg2          Start addr of message #2  (0x10 if empty)
-//  20   Msg3          Start addr of message #3  (0x10 if empty)
-//  21   Msg4          Start addr of message #4  (0x10 if empty)
-//  22   Msg5          Start addr of message #5  (0x10 if empty)
-//  23   Msg6          Start addr of message #6  (0x10 if empty)
+//  18   Msg1          Start addr of message #1  (0 if empty)
+//  19   Msg2          Start addr of message #2  (0 if empty)
+//  20   Msg3          Start addr of message #3  (0 if empty)
+//  21   Msg4          Start addr of message #4  (0 if empty)
+//  22   Msg5          Start addr of message #5  (0 if empty)
+//  23   Msg6          Start addr of message #6  (0 if empty)
 //
 // bits used in PinConfig:
 //   b0:    PTT enable/disable bit, if PTT disabled, LeadIn times will have no effect
@@ -332,15 +332,15 @@ static uint8_t Farnsworth=10;           // Farnsworth speed (10 means: no Farnsw
 static uint8_t PaddlePoint=50;          // ignored in this code (Paddle Switchpoint setting)
 static uint8_t Ratio=50;                // dah/dit ratio = (3*ratio)/50
 static uint8_t PinConfig=0x0E;          // PTT disabled
-const static uint8_t DontCare=0;        // seems to be unused
+const static uint8_t k12ext=0;          // Letter space, zero cuts, etc. (unused)
 const static uint8_t CmdWpm=15;         // ignored in this code (Command WPM setting)
 const static uint8_t FreePtr=0x18;      // free space in message memory. Initially 24.
-const static uint8_t MsgPtr1=0x10;      // Pointer to Message #1
-const static uint8_t MsgPtr2=0x10;      // Pointer to Message #2
-const static uint8_t MsgPtr3=0x10;      // Pointer to Message #3
-const static uint8_t MsgPtr4=0x10;      // Pointer to Message #4
-const static uint8_t MsgPtr5=0x10;      // Pointer to Message #5
-const static uint8_t MsgPtr6=0x10;      // Pointer to Message #6
+const static uint8_t MsgPtr1=0;         // Pointer to Message #1
+const static uint8_t MsgPtr2=0;         // Pointer to Message #2
+const static uint8_t MsgPtr3=0;         // Pointer to Message #3
+const static uint8_t MsgPtr4=0;         // Pointer to Message #4
+const static uint8_t MsgPtr5=0;         // Pointer to Message #5
+const static uint8_t MsgPtr6=0;         // Pointer to Message #6
 
 
 static uint8_t HostSpeed=0;             // Speed from host in host-mode.
@@ -670,7 +670,7 @@ void write_to_eeprom() {
     EEPROM.update(12, PaddlePoint);
     EEPROM.update(13, Ratio);
     EEPROM.update(14, PinConfig);
-    EEPROM.update(15, DontCare);        // This position will not be modified
+    EEPROM.update(15, k12ext);          // This position will not be modified
     EEPROM.update(16, CmdWpm);          // This position will not be modified
     EEPROM.update(17, FreePtr);         // This position will not be modified
     EEPROM.update(18, MsgPtr1);         // This position will not be modified
