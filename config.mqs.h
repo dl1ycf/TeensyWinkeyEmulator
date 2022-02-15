@@ -4,8 +4,7 @@
 // It uses no audio hardware, but instead produces the audio and pins 10+12
 // of the Teensy (as a PWM-modulated output with reasonable quality).
 //
-// There is only one pot (for speed control) connected to Analog input A2,
-// and no hardware PTT *input*.
+// There is only one pot (for speed control) connected to Analog input A2.
 //
 ////////////////////////////////////////////////////////////////////////////
 
@@ -50,5 +49,8 @@
 //
 ////////////////////////////////////////////////////////////////////////////
 #define MY_MUTE_OPTION                0   // set to 1 then RX audio is muted during CW PTT
+#define MY_MIDI_CHANNEL               5   // default MIDI channel to use
+#define MY_KEYDOWN_NOTE               1   // default MIDI key-down note
+#define MY_PTT_NOTE                   2   // default MIDI ptt note
 #define MY_DEFAULT_FREQ             800   // initial setting of side tone frequency
-#define MY_DEFAULT_VOLUME          0.20   // initial setting of side tone volume
+#define MY_DEFAULT_VOLUME            80   // initial setting of side tone volume (0-127)

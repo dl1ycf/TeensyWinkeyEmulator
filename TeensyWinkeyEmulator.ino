@@ -586,6 +586,15 @@ void setup() {
 #ifdef MY_MUTE_OPTION
   cwshield.set_cwptt_mute_option(MY_MUTE_OPTION);
 #endif
+#ifdef MY_MIDI_CHANNEL
+  cwshield.set_midi_channel(MY_MIDI_CHANNEL);
+#endif
+#ifdef  MY_KEYDOWN_NOTE
+  cwshield.set_midi_keydown_note(MY_KEYDOWN_NOTE);
+#endif
+#ifdef MY_PTT_NOTE
+  cwshield.set_midi_ptt_note(MY_PTT_NOTE);
+#endif
 #ifdef MY_DEFAULT_FREQ
   cwshield.sidetonefrequency(MY_DEFAULT_FREQ/10);
 #endif
@@ -790,16 +799,14 @@ void keydown() {
   digitalWrite(CW2,LOW);
 #endif
 
-#if (MY_KEYDOWN_NOTE >= 0 && MY_MIDI_CHANNEL >= 0)
-#if defined(USBMIDI) 
+#if defined(USBMIDI)  && defined(MY_KEYDOWN_NOTE) && defined(MY_MIDI_CHANNEL)
   usbMIDI.sendNoteOn(MY_KEYDOWN_NOTE, 127, MY_MIDI_CHANNEL);
   usbMIDI.send_now();
 #endif
-#if defined(MOCOLUFA)
+#if defined(MOCOLUFA) && defined(MY_KEYDOWN_NOTE) && defined(MY_MIDI_CHANNEL)
   Serial.write(0x90 | (MY_MIDI_CHANNEL-1) & 0x0F));
   Serial.write(MY_KEYDOWN_NOTE);
   Serial.write(127);
-#endif
 #endif
 
 #ifdef CWKEYERSHIELD                               // MIDI and sidetone
@@ -831,16 +838,14 @@ void keyup() {
   digitalWrite(CW2,HIGH);                               // active-low CW output
 #endif
 
-#if (MY_KEYDOWN_NOTE >= 0 && MY_MIDI_CHANNEL >= 0)
-#if defined(USBMIDI) 
+#if defined(USBMIDI) && defined(MY_KEYDOWN_NOTE) && defined(MY_MIDI_CHANNEL)
   usbMIDI.sendNoteOn(MY_KEYDOWN_NOTE, 0, MY_MIDI_CHANNEL);
   usbMIDI.send_now();
 #endif
-#if defined(MOCOLUFA)
+#if defined(MOCOLUFA) && defined(MY_KEYDOWN_NOTE) && defined(MY_MIDI_CHANNEL)
   Serial.write(0x90 | (MY_MIDI_CHANNEL-1) & 0x0F));
   Serial.write(MY_KEYDOWN_NOTE);
   Serial.write(0);
-#endif
 #endif
 
 #ifdef CWKEYERSHIELD                               // MIDI and side tone
@@ -868,15 +873,13 @@ void ptt_on() {
   digitalWrite(PTT2,LOW);
 #endif
 
-#if (MY_CWPTT_NOTE >= 0 && MY_MIDI_CHANNEL >= 0)
-#if defined(USBMIDI) 
-  usbMIDI.sendNoteOn(MY_CWPTT_NOTE, 127, MY_MIDI_CHANNEL);
+#if defined(USBMIDI) && defined(MY_PTT_NOTE) && defined(MY_MIDI_CHANNEL)
+  usbMIDI.sendNoteOn(MY_PTT_NOTE, 127, MY_MIDI_CHANNEL);
 #endif
-#if defined(MOCOLUFA)
+#if defined(MOCOLUFA) && defined(MY_PTT_NOTE) && defined(MY_MIDI_CHANNEL)
   Serial.write(0x90 | (MY_MIDI_CHANNEL-1) & 0x0F));
-  Serial.write(MY_CWPTT_NOTE);
+  Serial.write(MY_PTT_NOTE);
   Serial.write(127);
-#endif
 #endif
 
 #ifdef CWKEYERSHIELD
@@ -904,15 +907,13 @@ void ptt_off() {
   digitalWrite(PTT2,HIGH);                                // active low PTT line
 #endif
 
-#if (MY_CWPTT_NOTE >= 0 && MY_MIDI_CHANNEL >= 0)
-#if defined(USBMIDI) 
-  usbMIDI.sendNoteOn(MY_CWPTT_NOTE, 0, MY_MIDI_CHANNEL);
+#if defined(USBMIDI) && defined(MY_PTT_NOTE) && defined(MY_MIDI_CHANNEL)
+  usbMIDI.sendNoteOn(MY_PTT_NOTE, 0, MY_MIDI_CHANNEL);
 #endif
-#if defined(MOCOLUFA)
+#if defined(MOCOLUFA) && defined(MY_PTT_NOTE) && defined(MY_MIDI_CHANNEL)
   Serial.write(0x90 | (MY_MIDI_CHANNEL-1) & 0x0F));
   Serial.write(MY_CWPTT_NOTE);
   Serial.write(0);
-#endif
 #endif
 
 #ifdef CWKEYERSHIELD
