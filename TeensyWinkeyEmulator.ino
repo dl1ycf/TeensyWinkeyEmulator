@@ -356,12 +356,7 @@ static uint8_t PinConfig=0x0E;          // PTT disabled
 const static uint8_t k12ext=0;          // Letter space, zero cuts, etc. (unused)
 const static uint8_t CmdWpm=15;         // ignored in this code (Command WPM setting)
 const static uint8_t FreePtr=0x18;      // free space in message memory. Initially 24.
-const static uint8_t MsgPtr1=0;         // Pointer to Message #1
-const static uint8_t MsgPtr2=0;         // Pointer to Message #2
-const static uint8_t MsgPtr3=0;         // Pointer to Message #3
-const static uint8_t MsgPtr4=0;         // Pointer to Message #4
-const static uint8_t MsgPtr5=0;         // Pointer to Message #5
-const static uint8_t MsgPtr6=0;         // Pointer to Message #6
+const static uint8_t MsgPtr=0x18;       // Pointer to empty message
 
 
 static uint8_t HostSpeed=0;             // Speed from host in host-mode.
@@ -691,15 +686,6 @@ void write_to_eeprom() {
     EEPROM.update(12, PaddlePoint);
     EEPROM.update(13, Ratio);
     EEPROM.update(14, PinConfig);
-    EEPROM.update(15, k12ext);          // This position will not be modified
-    EEPROM.update(16, CmdWpm);          // This position will not be modified
-    EEPROM.update(17, FreePtr);         // This position will not be modified
-    EEPROM.update(18, MsgPtr1);         // This position will not be modified
-    EEPROM.update(19, MsgPtr2);         // This position will not be modified
-    EEPROM.update(20, MsgPtr3);         // This position will not be modified
-    EEPROM.update(21, MsgPtr4);         // This position will not be modified
-    EEPROM.update(22, MsgPtr5);         // This position will not be modified
-    EEPROM.update(23, MsgPtr6);         // This position will not be modified
 }
 
 //////////////////////////////////////////////////////////////////////////////
@@ -1468,28 +1454,24 @@ void WinKey_state_machine() {
       break;
      case RDPROM:
       // dump EEPROM command
-      // only dump bytes 0 through 23,
-      // report the others being zero
+      // report constants for addr 0 and 15-23
+      // report zeroes for addr 24-255
+      //
       // Nothing must interrupt us, therefore no state machine
       // at 1200 baud, each character has a mere transmission time
       // of more than 8 msec, so do a pause of 12 msec after each
       // character. Since a complete dump takes much time, check
       // for incoming MIDI messages frequently (every 6 msec or so).
       //
-      ToHost(0xA5);  // this must  be 0xA5 no matter what our "magic" byte we use
-      delay(6);
-      DrainMIDI();
-      delay(6);
-      DrainMIDI();
-      for (inum=1; inum<24; inum++) {
-        ToHost(EEPROM.read(inum));
-        delay(6);
-        DrainMIDI();
-        delay(6);
-        DrainMIDI();
-      }
-      for (inum=24; inum< 256; inum++) {
-        ToHost(0);
+
+      for (inum=0; inum<256; inum++) {
+        if (inum ==  0              ) ToHost(0xA5);
+        if (inum >=  1 && inum <= 14) ToHost(EEPROM.read(inum));
+        if (inum == 15              ) ToHost(k12ext);
+        if (inum == 16              ) ToHost(CmdWpm);
+        if (inum == 17              ) ToHost(FreePtr);
+        if (inum >= 18 && inum <= 23) ToHost(MsgPtr);
+        if (inum >= 24              ) ToHost(0);
         delay(6);
         DrainMIDI();
         delay(6);
@@ -1500,36 +1482,17 @@ void WinKey_state_machine() {
     case WRPROM:
       //
       // Load EEPROM command. Only load bytes at addr
-      // 0 to 16. Leave bytes describing the lengths of
-      // the messages and the message storage untouched,
-      // since we do not use it.
+      // 1 to 14 since we make no use of the others. Write our
+      // "own" magic byte to addr 0.
       // Nothing must interrupt us, hence no state machine
       // no delay is required upon reading, but check for
       // incoming MIDI messages after each byte received.
       //
-      // a) read the first "magic" byte (MUST be 0xA5),
-      //    but store "our" magic byte at address 0
-      //
-      while (!ByteAvailable()) ;
-      byte=FromHost(); // MUST be 0xA5
-      DrainMIDI();
-      EEPROM.update(0, MAGIC);
-      //
-      // b) read EEPROM settings from ModeRegister (addr=1)
-      //    to PinConfig (addr=14) and store into EEPROM
-      //
-      for (inum=1; inum<15; inum++) {
+      for (inum=0; inum<256; inum++) {
         while (!ByteAvailable()) ;
         byte=FromHost();
-        DrainMIDI();
-        EEPROM.update(inum, byte);
-      }
-      //
-      // c) read (and ignore) all the rest. 
-      //
-      for (inum=15; inum<256; inum++) {
-        while (!ByteAvailable()) ;
-        byte=FromHost();
+        if (inum == 0              ) EEPROM.update(0, MAGIC);
+        if (inum >= 1 && inum <= 14) EEPROM.update(inum, byte);
         DrainMIDI();
       }
       winkey_state=FREE;
