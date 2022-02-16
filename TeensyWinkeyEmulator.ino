@@ -14,12 +14,13 @@
 // also affects which Serial module can be used.
 //
 //
-// Incompatible options (to be removed below):
+// Incompatible options from config.h (to be cleared up below):
 //
 // -  HWSERIAL overrides SWSERIAL
 // -  CWKEYERSHIELD overrides USBMIDI and MOCOLUFA.
 // -  USBMIDI overrides MOCOLUFA
 // -  MOCOLUFA disables HWSERIAL
+// -  SWSERIAL is disables unless RXD and TXD is defined
 //
 //
 // File config.h also defines the hardware pins (digital input, digital output,
@@ -30,33 +31,6 @@
 
 #include "config.h"
 
-////////////////////////////////////////////////////////////////////////////////////////
-//
-// Eliminate incompatible options
-//
-////////////////////////////////////////////////////////////////////////////////////////
-
-#ifdef CWKEYERSHIELD
-#undef USBMIDI
-#undef MOCOLUFA
-#undef POTPIN
-#endif
-
-#ifdef USBMIDI
-#undef MOCOLUFA
-#endif
-
-#ifdef MOCOLUFA
-#undef HWSERIAL
-#endif
-
-#ifdef HWSERIAL
-#undef SWSERIAL
-#endif
-
-#if !defined(RXD_PIN) || !defined(TXD_PIN)
-#undef SWSERIAL
-#endif
 
 ////////////////////////////////////////////////////////////////////////////////////////
 //
@@ -187,10 +161,57 @@
 //
 ////////////////////////////////////////////////////////////////////////////////////////
 
+////////////////////////////////////////////////////////////////////////////////////////
+//
+// Eliminate incompatible options
+//
+////////////////////////////////////////////////////////////////////////////////////////
+
+#ifdef CWKEYERSHIELD
+#undef USBMIDI
+#undef MOCOLUFA
+#undef POTPIN
+#endif
+
+#ifdef USBMIDI
+#undef MOCOLUFA
+#endif
+
+#ifdef MOCOLUFA
+#undef HWSERIAL
+#endif
+
+#ifdef HWSERIAL
+#undef SWSERIAL
+#endif
+
+#if !defined(RXD_PIN) || !defined(TXD_PIN)
+#undef SWSERIAL
+#endif
+
+#if defined(USBMIDI) || defined(MOCOLUFA)
+//
+// The CWKeyerShield (Teensy4) library has built-in defaults,
+// for USBMIDI (e.g. Teensy2) or MOCOLUFA (Arduino) we define
+// defaults here that can be overriden by defining these values
+// in the config.h file.
+//
+#ifndef MY_MIDI_CHANNEL
+#define MY_MIDI_CHANNEL 5
+#endif
+#ifndef MY_KEYDOWN_NOTE
+#define MY_KEYDOWN_NOTE 1
+#endif
+#ifndef MY_PTT_NOTE
+#define MY_PTT_NOTE 2
+#endif
+#endif // USBMIDI or MOCOLUFA
+
 #include <EEPROM.h>
 
 #ifdef CWKEYERSHIELD
 #include "CWKeyerShield.h"
+#undef POTPIN
 #endif
 
 //

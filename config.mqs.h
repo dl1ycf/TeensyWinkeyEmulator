@@ -27,6 +27,9 @@
 #define SHIELD_DIGITAL_PTTOUT           4   // Digital output for PTT
 #define SHIELD_DIGITAL_CWOUT            5   // Digital output for CW Keydown
 
+#define MY_MUTE_OPTION                0   // set to 1 then RX audio is muted during CW PTT
+#define MY_DEFAULT_FREQ             800   // initial setting of side tone frequency
+#define MY_DEFAULT_VOLUME            80   // initial setting of side tone volume (0-127)
 
 ////////////////////////////////////////////////////////////////////////////
 //
@@ -42,15 +45,10 @@
 
 ////////////////////////////////////////////////////////////////////////////
 //
-// run-time configurable settings for the CWKeyerShield library
-// (not necessary to define them if we are using the default values)
-// Note that settings the side-tone frequency/volume is only meaningful
-// if there are *no* pots to adjust them.
+// MIDI channels and note values. When using USBMIDI or MOCOLUFA, they must
+// be given. If not given, default values will be used.
 //
 ////////////////////////////////////////////////////////////////////////////
-#define MY_MUTE_OPTION                0   // set to 1 then RX audio is muted during CW PTT
 #define MY_MIDI_CHANNEL               5   // default MIDI channel to use
 #define MY_KEYDOWN_NOTE               1   // default MIDI key-down note
 #define MY_PTT_NOTE                   2   // default MIDI ptt note
-#define MY_DEFAULT_FREQ             800   // initial setting of side tone frequency
-#define MY_DEFAULT_VOLUME            80   // initial setting of side tone volume (0-127)

@@ -12,8 +12,8 @@
 
 #define RXD 7
 #define TXD 8
-#define SWSERIAL                  // use standard serial connection (1200 baud) for Winkey protocol
-#define USBMIDI
+#define SWSERIAL                  // use "software" serial connection (1200 baud) for Winkey protocol
+#define USBMIDI                   // since USB is used for MIDI
 
 ////////////////////////////////////////////////////////////////////////////
 //
@@ -26,12 +26,15 @@
 #define PaddleRight            0   // Digital input for right paddle
 #define PaddleLeft             1   // Digital input for left paddle
 #define StraightKey            2   // Digital input for straight key
+#define POTPIN                A2   // Analog input for potentiometer
 
 ////////////////////////////////////////////////////////////////////////////
 //
-// MIDI messages
+// MIDI channels and note values. When using USBMIDI or MOCOLUFA, they must
+// be given. If not given, default values will be used.
 //
 ////////////////////////////////////////////////////////////////////////////
 #define MY_MIDI_CHANNEL               5   // default MIDI channel to use
 #define MY_KEYDOWN_NOTE               1   // default MIDI key-down note
 #define MY_PTT_NOTE                   2   // default MIDI ptt note
+
