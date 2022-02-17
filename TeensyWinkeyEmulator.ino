@@ -1541,18 +1541,23 @@ void WinKey_state_machine() {
       case ADMIN:
         switch (byte) {
           case 0:     // Admin Calibrate
-            // CALIBRATE
-            winkey_state=SWALLOW;
+            winkey_state=SWALLOW;  // expect a byte 0xFF
             break;
           case 1:     // Admin Reset
-            // RESET
-            winkey_state=FREE;
+#ifdef HWSERIAL          
+            Serial.end();
+            Serial.begin(1200);
+#endif
+#ifdef SWSERIAL
+            swserial.end();
+            swserial.begin(1200);
+#endif             
             read_from_eeprom();
             hostmode=0;
             HostSpeed=0;
+            winkey_state=FREE;
             break;
           case 2:     // Admin Open
-            // OPEN
             hostmode = 1;
             ToHost(WKVERSION);
             winkey_state=FREE;
@@ -1562,17 +1567,26 @@ void WinKey_state_machine() {
             HostSpeed = 0;
             // restore "standalone" settings from EEPROM
             read_from_eeprom();
+#ifdef HWSERIAL          
+            Serial.end();
+            Serial.begin(1200);
+#endif
+#ifdef SWSERIAL
+            swserial.end();
+            swserial.begin(1200);
+#endif             
             winkey_state=FREE;
             break;
           case 4:     // Admin Echo
             winkey_state=XECHO;
             break;
-          case 5:     // Admin
-          case 6:
-          case 8:
-          case 9:
-            // only for backwards compatibility
+          case 5:     // Admin Paddle A2D, historical command
+          case 6:     // Admin Speed  A2D, historical command
+          case 8:     // K1EL debug onla
+          case 9:     // Get Cal, historical command
+            // For backwards compatibility return a zero
             ToHost(0);
+            winkey_state=FREE;
             break;
           case 7:     // Admin DumpDefault
             // never used so I refrain from making an own "state" for this.
@@ -1595,21 +1609,54 @@ void WinKey_state_machine() {
             ToHost(0);
             winkey_state=FREE;
             break;
-          case 10:      // Admin set WK1 mode
+          case 10: // Admin Set WK1 Mode, not implemented here
             winkey_state=FREE;
             break;
-          case 11:      // Admin set WK2 mode
+          case 11: // Admin Set WK2 Mode, not implemented here
             winkey_state=FREE;
             break;
-          case 12:
+          case 12: // Admin Dump EEPROM
             winkey_state=RDPROM;
             break;
-          case 13:
+          case 13: // Admin Load EEPROM
             winkey_state=WRPROM;
             break;
-          case 14:
+          case 14: // Admin send standalone message
             winkey_state=MESSAGE;
             break;
+          case 15: // Admin Load XMODE
+            winkey_state=SWALLOW;
+            break;
+          case 16: // Admin Reserved (return a zero!)
+            ToHost(0);
+            winkey_state=FREE;
+            break;
+          case 17: // Admin Set High Baud
+#ifdef HWSERIAL          
+            Serial.end();
+            Serial.begin(9600);
+#endif
+#ifdef SWSERIAL
+            swserial.end();
+            swserial.begin(9600);
+#endif                              
+            winkey_state=FREE;
+            break;
+          case 18: // Admin Set Low Baud
+#ifdef HWSERIAL          
+            Serial.end();
+            Serial.begin(1200);
+#endif
+#ifdef SWSERIAL
+            swserial.end();
+            swserial.begin(1200);
+#endif 
+            break;                                       
+          case 19: // Admin reserved
+          case 20: // Admin reserved
+          default: // Should not occur.
+             winkey_state=FREE;
+             break;               
         }
         break;
       case SIDETONE:
