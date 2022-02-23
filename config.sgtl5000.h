@@ -1,9 +1,11 @@
 ////////////////////////////////////////////////////////////////////////////
 //
 // Example config.h file that uses the CWKeyerShield library with a Teensy4
-// and the TeensyAudioShield. It only has one pot (for speed control) 
+// and the TeensyAudioShield that has an NXP SGTL5000 audio codec.
+// There is only one potentiometer (for speed control) 
 // at analog input line A2, the CW and PTT outputs are at digital output
 // lines 5 and 4.
+// Digital input lines are 0 (Straight Key), 1 (PaddleRight) and 2 (PaddleLeft).
 //
 ////////////////////////////////////////////////////////////////////////////
 
@@ -18,9 +20,9 @@
 //
 ////////////////////////////////////////////////////////////////////////////
 
-#define PaddleRight              0   // Digital input for right paddle
-#define PaddleLeft               1   // Digital input for left paddle
-#define StraightKey              2   // Digital input for straight key
+#define PaddleRight              1   // Digital input for right paddle
+#define PaddleLeft               2   // Digital input for left paddle
+#define StraightKey              0   // Digital input for straight key
 
 ////////////////////////////////////////////////////////////////////////////
 //
@@ -28,7 +30,8 @@
 // (if CWKEYERSHIELD is not defined, the other settings in this section
 //  have no meaning)
 //
-// These settings are passed to the CWKeyerShield upon construction
+// These settings are passed to the CWKeyerShield upon construction. Note that
+// hardware lines not defined here will be set to -1 so they are not used.
 //
 ////////////////////////////////////////////////////////////////////////////
 
@@ -42,10 +45,11 @@
 //
 // run-time configurable settings for the CWKeyerShield library
 // (not necessary to define them if we are using the default values)
-// Note that settings the side-tone frequency/volume is only meaningful
-// if there are *no* pots to adjust them.
+// Note that setting the side-tone frequency/volume is only meaningful
+// if there are *no* pots to adjust them, otherwise the initial values
+// defined here well be overwritten upon the first reading of the pots.
 //
 ////////////////////////////////////////////////////////////////////////////
 #define MY_MUTE_OPTION                0   // set to 1 then RX audio is muted during CW PTT
 #define MY_DEFAULT_FREQ             800   // initial setting of side tone frequency
-#define MY_DEFAULT_VOLUME          0.20   // initial setting of side tone volume
+#define MY_DEFAULT_VOLUME            40   // initial setting of side tone volume (0-127)
