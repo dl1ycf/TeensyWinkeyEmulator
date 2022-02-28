@@ -29,7 +29,7 @@
 //
 //////////////////////////////////////////////////////////////////////////////////////////
 
-#include "config.h"
+#include "config.sgtl5000.h"
 
 
 ////////////////////////////////////////////////////////////////////////////////////////
@@ -148,7 +148,7 @@
 ////////////////////////////////////////////////////////////////////////////////////////
 //
 //
-// The whole thing is programmed as three (independent) state machines,
+// The whole thing is programmed as (independent) state machines,
 //
 // keyer state machine:
 //  - handles the paddle/straight key and produces the dits and dahs,
@@ -284,6 +284,31 @@ enum WKSTAT {
   POINTER_3
 } winkey_state=FREE;
 
+enum ADMIN_COMMAND {
+  ADMIN_CALIBRATE  =  0,
+  ADMIN_RESET      =  1,
+  ADMIN_OPEN       =  2,
+  ADMIN_CLOSE      =  3,
+  ADMIN_ECHO       =  4,
+  ADMIN_PAD_A2D    =  5,
+  ADMIN_SPD_A2D    =  6,
+  ADMIN_GETVAL     =  7,
+  ADMIN_CMD8       =  8,
+  ADMIN_GETCAL     =  9,
+  ADMIN_SETWK1     = 10,
+  ADMIN_SETWK2     = 11,
+  ADMIN_DUMPEEPROM = 12,
+  ADMIN_LOADEEPROM = 13,
+  ADMIN_SENDMSG    = 14,
+  ADMIN_LOADXMODE  = 15,
+  ADMIN_CMD16      = 16,
+  ADMIN_HIGHBAUD   = 17,
+  ADMIN_LOWBAUD    = 18,
+  ADMIN_CMD19      = 19,
+  ADMIN_CMD20      = 20
+};
+
+
 //////////////////////////////////////////////////////////////////////////////////////////////////////
 //
 // EEPROM variables
@@ -298,7 +323,7 @@ enum WKSTAT {
 // ADDR  Name          Explanation
 // =================================================================
 //   0   Magic         Magic Byte (0xA5)
-//   1   ModeRegister  see blowe
+//   1   ModeRegister  see below
 //   2   Speed         in wpm, if pot not used
 //   3   Sidetone      0x05 encodes 800 Hz, see WK manual
 //   4   Weight        used to modify dit/dah length
@@ -325,13 +350,14 @@ enum WKSTAT {
 // bits used in PinConfig:
 //   b0:    PTT enable/disable bit, if PTT disabled, LeadIn times will have no effect
 //   b1:    Sidetone enable/disable bit
-//   b4/b5: PTT tail = 2 wordspaces (11), 1.67 wordspaces, 1.33 wordspaces, 1.00 wordspaces dit(00)
+//   b4/b5: PTT hang time = word space + 8/4/2/1 dits (11,10,01,00)
 //
-// bits used in ModeRegiser:
+// bits used in ModeRegister:
 //   b6:    echo characters entered by paddle or straight key (to serial line)
 //   b4/5:  Paddle mode (00 = Iambic-B, 01 = Iambic-A, 10 = Ultimatic, 11 = Bugmode)
 //   b3:    swap paddles
-//   b2:    echo characters received from the serial line as they are transmitted
+//   b2:    echo characters received from the serial line when they are keyed
+//   b0:    use contest (CT) spacing
 //
 // NOTE:
 // When reporting EEPROM contents, report un-used parameters as well, to be compatible with
@@ -359,8 +385,6 @@ const static uint8_t FreePtr=0x18;      // free space in message memory. Initial
 const static uint8_t MsgPtr=0x18;       // Pointer to empty message
 
 
-static uint8_t HostSpeed=0;             // Speed from host in host-mode.
-                                        // If nonzero, it overrides other speed settings
 //
 // Macros to read the ModeRegister
 //
@@ -373,6 +397,8 @@ static uint8_t HostSpeed=0;             // Speed from host in host-mode.
 #define BUGMODE       ((ModeRegister & 0x30) == 0x30)
 #define ULTIMATIC     ((ModeRegister & 0x30) == 0x20)
 
+#define USE_CT        (ModeRegister & 0x01)
+
 //
 // Macros to read PinConfig
 //
@@ -381,9 +407,11 @@ static uint8_t HostSpeed=0;             // Speed from host in host-mode.
 #define HANGBITS         ((PinConfig & 0x30) >> 4)
 
 
+static uint8_t BufSpeed=0;              // "Buffered" speed, if nonzero
+static uint8_t HostSpeed=0;             // Speed from host in host-mode.
 static uint8_t WKstatus=0xC0;           // reported to host when it changes
 
-static int inum;                        // counter for number of bytes received in a given state
+static uint16_t inum;                   // counter for number of bytes received in a given state
 
 static uint8_t ps1;                     // first byte of a pro-sign
 static uint8_t pausing=0;               // "pause" state
@@ -392,8 +420,7 @@ static uint8_t straight=0;              // state of the straight key (1 = presse
 static uint8_t tuning=0;                // "Tune" mode active, deactivate paddle
 static uint8_t hostmode  = 0;           // host mode
 static uint8_t SpeedPot =  0;           // Speed value from the Potentiometer
-static int     myfreq=800;              // current side tone frequency
-static uint8_t myspeed;                 // current CW speed
+static uint16_t myfreq=800;              // current side tone frequency
 static uint8_t prosign=0;               // set if we are in the middle of a prosign
 static uint8_t num_elements=0;          // number of elements sent in a sequence
 
@@ -401,13 +428,13 @@ static uint8_t num_elements=0;          // number of elements sent in a sequence
 //
 // Ring buffer for characters queued for sending
 //
-#define BUFLEN 128     // number of bytes in buffer
+#define BUFLEN 128     // number of bytes in buffer (much larger than in K1EL chip)
 #define BUFMARGIN 85   // water mark for reporting "buffer almost full"
 
 static unsigned char character_buffer[BUFLEN];  // circular buffer
-static int bufrx=0;                             // output (read) pointer
-static int buftx=0;                             // input (write) pointer
-static int bufcnt=0;                            // number of characters in buffer
+static uint8_t bufrx=0;                             // output (read) pointer
+static uint8_t buftx=0;                             // input (write) pointer
+static uint8_t bufcnt=0;                            // number of characters in buffer
 //
 //////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -427,13 +454,13 @@ static unsigned long actual;    // time-stamp for this execution of loop()
 //
 // variables updated in interrupt service routine
 //
-static  uint8_t kdot = 0;      // This variable reflects the value of the dot paddle
-static  uint8_t kdash = 0;     // This value reflects the value of the dash paddle
-static  uint8_t memdot=0;      // set, if dot paddle hit since the beginning of the last dash
-static  uint8_t memdash=0;     // set,  if dash paddle hit since the beginning of the last dot
-static  uint8_t lastpressed=0; // Indicates which paddle was pressed last (for ULTIMATIC)
-static  uint8_t eff_kdash;     // effective kdash (may be different from kdash in BUG and ULTIMATIC mode)
-static  uint8_t eff_kdot;      // effective kdot  (may be different from kdot in ULTIMATIC mode)
+static uint8_t kdot = 0;      // This variable reflects the value of the dot paddle
+static uint8_t kdash = 0;     // This value reflects the value of the dash paddle
+static uint8_t memdot=0;      // set, if dot paddle hit since the beginning of the last dash
+static uint8_t memdash=0;     // set,  if dash paddle hit since the beginning of the last dot
+static uint8_t lastpressed=0; // Indicates which paddle was pressed last (for ULTIMATIC)
+static uint8_t eff_kdash;     // effective kdash (may be different from kdash in BUG and ULTIMATIC mode)
+static uint8_t eff_kdot;      // effective kdot  (may be different from kdot in ULTIMATIC mode)
 
 static uint8_t dash_held=0;  // dot paddle state at the beginning of the last dash
 static uint8_t dot_held=0;   // dash paddle state at the beginning of the last dot
@@ -542,7 +569,7 @@ void init_eeprom();
 // Initialize serial port and hardware lines
 // init eeprom or load settings from eeprom
 // init Audio+MIDI
-
+//
 //////////////////////////////////////////////////////////////////////////////
 
 #ifdef SWSERIAL
@@ -595,6 +622,7 @@ void setup() {
 #endif
 
   init_eeprom();
+  
 #ifdef CWKEYERSHIELD
 
  cwshield.setup();
@@ -616,7 +644,7 @@ void setup() {
 #endif
 #ifdef MY_DEFAULT_VOLUME
   cwshield.sidetonevolume(MY_DEFAULT_VOLUME);
-#endif    
+#endif
 #endif
 }
 
@@ -810,6 +838,7 @@ void keydown() {
   usbMIDI.sendNoteOn(MY_KEYDOWN_NOTE, 127, MY_MIDI_CHANNEL);
   usbMIDI.send_now();
 #endif
+
 #if defined(MOCOLUFA) && defined(MY_KEYDOWN_NOTE) && defined(MY_MIDI_CHANNEL)
   Serial.write(0x90 | (MY_MIDI_CHANNEL-1) & 0x0F));
   Serial.write(MY_KEYDOWN_NOTE);
@@ -849,6 +878,7 @@ void keyup() {
   usbMIDI.sendNoteOn(MY_KEYDOWN_NOTE, 0, MY_MIDI_CHANNEL);
   usbMIDI.send_now();
 #endif
+
 #if defined(MOCOLUFA) && defined(MY_KEYDOWN_NOTE) && defined(MY_MIDI_CHANNEL)
   Serial.write(0x90 | (MY_MIDI_CHANNEL-1) & 0x0F));
   Serial.write(MY_KEYDOWN_NOTE);
@@ -883,6 +913,7 @@ void ptt_on() {
 #if defined(USBMIDI) && defined(MY_PTT_NOTE) && defined(MY_MIDI_CHANNEL)
   usbMIDI.sendNoteOn(MY_PTT_NOTE, 127, MY_MIDI_CHANNEL);
 #endif
+
 #if defined(MOCOLUFA) && defined(MY_PTT_NOTE) && defined(MY_MIDI_CHANNEL)
   Serial.write(0x90 | (MY_MIDI_CHANNEL-1) & 0x0F));
   Serial.write(MY_PTT_NOTE);
@@ -917,6 +948,7 @@ void ptt_off() {
 #if defined(USBMIDI) && defined(MY_PTT_NOTE) && defined(MY_MIDI_CHANNEL)
   usbMIDI.sendNoteOn(MY_PTT_NOTE, 0, MY_MIDI_CHANNEL);
 #endif
+
 #if defined(MOCOLUFA) && defined(MY_PTT_NOTE) && defined(MY_MIDI_CHANNEL)
   Serial.write(0x90 | (MY_MIDI_CHANNEL-1) & 0x0F));
   Serial.write(MY_CWPTT_NOTE);
@@ -937,12 +969,12 @@ void ptt_off() {
 void clearbuf() {
   bufrx=buftx=bufcnt=0;
   pausing=0;
+  BufSpeed=0;
 }
 
 //////////////////////////////////////////////////////////////////////////////
 //
 // Insert zeroes, for pointer commands
-// This goes to ABSOLUTE POSITION
 //
 //////////////////////////////////////////////////////////////////////////////
 
@@ -966,6 +998,7 @@ void setbufpos(int pos) {
 //////////////////////////////////////////////////////////////////////////////
 //
 // queue up to 3 chars in character_buffer
+// If there is not enough space to queue all of them, then queue none.
 //
 //////////////////////////////////////////////////////////////////////////////
 
@@ -1088,19 +1121,41 @@ unsigned char morse[58] = {
 void keyer_state_machine() {
   int i;                        // general counter variable
   uint8_t byte;                 // general one-byte variable
-  int dotlen;                   // length of dot (msec)
-  int dashlen;                  // length of dash (msec)
-  int plen;                     // length of delay between dits/dahs
-  int clen;                     // inter-character delay in addition to inter-element delay
-  int wlen;                     // inter-word delay in addition to inter-character delay
-  int hang;                     // PTT tail hang time
+  uint16_t dotlen;              // length of dot (msec)
+  uint16_t dashlen;             // length of dash (msec)
+  uint16_t plen;                // length of delay between dits/dahs
+  uint16_t clen;                // inter-character delay in addition to inter-element delay
+  uint16_t wlen;                // inter-word delay in addition to inter-character delay
+  uint16_t hang;                // PTT tail hang time
+  uint8_t  myspeed;             // effective speed (from host, from pot, or buffered)
 
   static unsigned long straight_pressed;  // for timing straight key signals
 
+
   //
-  // It is a little overkill to determine all these values at each heart beat,
-  // but the uC should have enough horse-power to handle this
+  // Abort sending buffered characters (and clear the buffer)
+  // if a paddle is hit. Set "breakin" flag
   //
+  if ((eff_kdash || eff_kdot || straight) && (keyer_state >= SNDCHAR_PTT)) {
+    breakin=1;
+    clearbuf();
+    keyer_state=CHECK;
+    wait=actual+10;      // will be re-computed soon
+  }
+
+  //
+  // HostMode speed overrides "local" speed
+  //
+  if (HostSpeed == 0) {
+    myspeed=Speed;
+  } else {
+    myspeed=HostSpeed;
+  }
+
+  //
+  // If sending from the buffer, possibly use "buffered speed"
+  //
+  if (keyer_state >= SNDCHAR_PTT && BufSpeed != 0) myspeed=BufSpeed;
 
 
   //
@@ -1111,14 +1166,16 @@ void keyer_state_machine() {
   plen   =dotlen;                  // inter-element pause
   clen   =2*dotlen;                // inter-character pause = 3 dotlen, one already done (inter-element)
   wlen   =4*dotlen;                // inter-word pause = 7 dotlen, 3 already done (inter-character)
+  if (USE_CT) wlen = 3*dotlen;     // contest timing for inter-word pause
 
   //
-  // Farnsworth timing: strecht inter-character and inter-word pauses
+  // Farnsworth timing: stretch inter-character and inter-word pauses
   //
   if (Farnsworth > 10 && Farnsworth < myspeed) {
-    i=3158/Farnsworth -(31*dotlen)/19;
+    i=3158/Farnsworth -(31*dotlen)/19;    // based on PARIS timing, i > dotlen
     clen=3*i - dotlen;                    // stretched inter-character pause
     wlen=7*i - clen;                      // stretched inter-word pause
+    if (USE_CT) wlen = 6*i - clen;        // contest timing for inter-word pause
   }
 
   //
@@ -1141,31 +1198,18 @@ void keyer_state_machine() {
   }
 
   //
-  // PTT hang time from PTTtail.
-  // If it is zero, or PTT not enabled, use hang bits
-  // Note: WK2.3 changed hang times
+  // Note: new in WK2.3: tail and hang are independent
+  // - hang-bits ONLY apply for CW from the paddle
+  // - PTT-tail ONLY applies for auto-CW
   //
-  if (Tail != 0 && PTT_ENABLED) {
-    hang=10*Tail;
-  } else {
-    switch (HANGBITS) {
-      case 0: hang =  8*dotlen; break;     // word space + 1 dot
-      case 1: hang =  9*dotlen; break;     // word space + 2 dots
-      case 2: hang = 11*dotlen; break;     // word space + 4 dots
-      case 3: hang = 15*dotlen; break;     // word space + 8 dots
-    }
+
+  switch (HANGBITS) {
+    case 0: hang =  8*dotlen; break;     // word space + 1 dot
+    case 1: hang =  9*dotlen; break;     // word space + 2 dots
+    case 2: hang = 11*dotlen; break;     // word space + 4 dots
+    case 3: hang = 15*dotlen; break;     // word space + 8 dots
   }
 
-  //
-  // Abort sending buffered characters (and clear the buffer)
-  // if a paddle is hit. Set "breakin" flag
-  //
-  if ((eff_kdash || eff_kdot || straight) && (keyer_state >= SNDCHAR_PTT)) {
-    breakin=1;
-    clearbuf();
-    keyer_state=CHECK;
-    wait=actual+hang;
-  }
   switch (keyer_state) {
     case CHECK:
       // reset number of elements sent
@@ -1206,8 +1250,8 @@ void keyer_state_machine() {
           wait=actual+LeadIn*10;
         }
       }
-      if (eff_kdot) {
 
+      if (eff_kdot) {
         keyer_state=STARTDOT;
         collpos++;
         wait=actual;
@@ -1217,6 +1261,7 @@ void keyer_state_machine() {
           wait=actual+LeadIn*10;
         }
       }
+
       if (straight) {
         sentspace=0;
         keyer_state=STARTSTRAIGHT;
@@ -1356,9 +1401,14 @@ void keyer_state_machine() {
       // wait = end  of pause (inter-element or inter-word)
       if (actual >= wait) {
         if (sending == 1) {
-          // character sent completely
           keyer_state=CHECK;
-          if (bufcnt > 0) wait=actual+3*dotlen; // when buffer empty, go RX immediately
+          //
+          // Note that the tail-time *ADDS* to the three-dotlen inter-word pause
+          // already accounted for, so a non-zero PTT tail should not be necessary
+          // in most cases.
+          // "wait" will be over-written in due course if there are still characters in the
+          // buffer, of if characters arrive over the serial line in due course.
+          wait += 10*Tail;
         } else {
           keydown();
           keyer_state=SNDCHAR_ELE;
@@ -1370,29 +1420,87 @@ void keyer_state_machine() {
   }
   //
   // If keyer is idle and buffered characters available, transfer next one to "sending"
+  // Rely on the "completeness" of buffered commands
+  // Note that when a character has been received such that we stay in the "CHECK" state,
+  // wait must be set to actual+dotlen so we do not loose PTT while waiting for the next
+  // character. This is important for programs that wait for the "serial echo" of any
+  // character before sending the next one.
   //
   if (bufcnt > 0 && keyer_state==CHECK && !pausing) {
     //
     // transfer next character to "sending"
     //
-    byte=FromBuffer();
+    byte=FromBuffer();   
+    if (byte >=32 && byte <=127 && SERIAL_ECHO) {
+      ToHost(byte);
+      wait=actual+dotlen; // host may wait for the byte before sending the next one
+    }
     switch (byte) {
       case PROSIGN:
         prosign=1;
         break;
       case BUFNOP:
         break;
+      case KEYBUF:        // ignored
+      case WAIT:          // ignored
+      case SETPTT:        // ignored
+      case HSCWSPD:       // ignored
+        byte=FromBuffer();
+        break;
+      case CANCELSPD:
+        BufSpeed=0;
+        break;
+      case BUFSPD:
+        byte=FromBuffer();
+        BufSpeed=byte;
+        if (BufSpeed > 99) BufSpeed=99;
+        break;
       case 32:  // space
-        // send inter-word distance
-        if (SERIAL_ECHO) ToHost(32);  // echo
         sending=1;
         wait=actual + wlen;
         keyer_state=SNDCHAR_DELAY;
         break;
+      //
+      // PROTOCOL EXTENSION: Special treatment of "[", "$", and "]"
+      // used for contest logging programs that are not aware of
+      // the "buffered speed" facility. Typical CQ call is
+      // CQ DL1YCF [TEST]
+      // and a typical sent-exchange is
+      // [5nn$tt1] or [5nn] $tt1]
+      //
+      // That is, "TEST" and "5nn" are sent at higher speed (40 wpm),
+      // while the sent-exchange number is sent at lower speed (20 wpm),
+      // assuming that the standard contest operating speed is between 24 and
+      // 30 wpm.
+      //
+      case '[': // set buffered speed to "high"
+        BufSpeed=40;
+        break;
+      case '$': // set buffered speed to "slow"
+        BufSpeed=20;
+        break;
+      case ']': // cancel BUFSPD
+         BufSpeed=0;
+         break;
+      case '{':
+      case '}':
+      case '^':
+      case '_':
+      case '\\':
+      case '`':
+      case '~':
+      case 0x7f:
+          break;
+      case '|':  // thin space (a fulldotlen)
+                 // Note that the K1EL chip does half a dotlen but this is rather small
+         sending=1;
+         wait=actual + dotlen;
+         keyer_state=SNDCHAR_DELAY;
+         break;
       default:
+        // ignore "non-key'able characters"
         if (byte >='a' && byte <= 'z') byte -= 32;  // convert to lower case
-        if (byte > 32 && byte < 'Z') {
-          if (SERIAL_ECHO) ToHost(byte);  // echo
+        if (byte > 32 && byte <= 'Z') {
           sending=morse[byte-33];
           if (sending != 1) {
             wait=actual;  // no lead-in wait by default
@@ -1444,12 +1552,12 @@ void WinKey_state_machine() {
     case NULLCMD:
       winkey_state=FREE;
       break;
-    case CANCELSPD:
-      // cancel buffered speed, ignored
+    case CANCELSPD: // Buffered command
+      queue(1,CANCELSPD,0,0);
       winkey_state=FREE;
       break;
-    case BUFNOP:
-      // buffered no-op; ignored
+    case BUFNOP: // Buffered command
+      queue(1,BUFNOP,0,0);
       winkey_state=FREE;
       break;
      case RDPROM:
@@ -1503,8 +1611,8 @@ void WinKey_state_machine() {
   }
   //
   // Check serial line, if in hostmode or ADMIN command enter "WinKey" state machine
-  // NOTE: process *all* ADMIN command even if hostmode is closed. For example,
-  // fldigi sends "echo" first and then "open".
+  // (Note ADMIN commands should only be sent if hostmode is closed, with the exception
+  // of the CLOSE command).
   //
   if (ByteAvailable()) {
     byte=FromHost();
@@ -1540,55 +1648,58 @@ void WinKey_state_machine() {
         break;
       case ADMIN:
         switch (byte) {
-          case 0:     // Admin Calibrate
+          case ADMIN_CALIBRATE:
             winkey_state=SWALLOW;  // expect a byte 0xFF
             break;
-          case 1:     // Admin Reset
-#ifdef HWSERIAL          
+          case ADMIN_RESET:
+#ifdef HWSERIAL
             Serial.end();
             Serial.begin(1200);
 #endif
 #ifdef SWSERIAL
             swserial.end();
             swserial.begin(1200);
-#endif             
+#endif
             read_from_eeprom();
             hostmode=0;
             HostSpeed=0;
+            clearbuf();
             winkey_state=FREE;
             break;
-          case 2:     // Admin Open
+          case ADMIN_OPEN:
             hostmode = 1;
+            clearbuf();
             ToHost(WKVERSION);
             winkey_state=FREE;
             break;
-          case 3:     // Admin Close
+          case ADMIN_CLOSE:
             hostmode = 0;
             HostSpeed = 0;
+            clearbuf();
             // restore "standalone" settings from EEPROM
             read_from_eeprom();
-#ifdef HWSERIAL          
+#ifdef HWSERIAL
             Serial.end();
             Serial.begin(1200);
 #endif
 #ifdef SWSERIAL
             swserial.end();
             swserial.begin(1200);
-#endif             
+#endif
             winkey_state=FREE;
             break;
-          case 4:     // Admin Echo
+          case ADMIN_ECHO:
             winkey_state=XECHO;
             break;
-          case 5:     // Admin Paddle A2D, historical command
-          case 6:     // Admin Speed  A2D, historical command
-          case 8:     // K1EL debug onla
-          case 9:     // Get Cal, historical command
+          case ADMIN_PAD_A2D:     // Admin Paddle A2D, historical command
+          case ADMIN_SPD_A2D:     // Admin Speed  A2D, historical command
+          case ADMIN_CMD8:        // K1EL debug only
+          case ADMIN_GETCAL:      // Get Cal, historical command
             // For backwards compatibility return a zero
             ToHost(0);
             winkey_state=FREE;
             break;
-          case 7:     // Admin DumpDefault
+          case ADMIN_GETVAL:
             // never used so I refrain from making an own "state" for this.
             // we need no delays since the buffer should be able to hold 15
             // bytes.
@@ -1609,63 +1720,73 @@ void WinKey_state_machine() {
             ToHost(0);
             winkey_state=FREE;
             break;
-          case 10: // Admin Set WK1 Mode, not implemented here
-            winkey_state=FREE;
+          case ADMIN_SETWK1:
+            winkey_state=FREE;  // not implemented
             break;
-          case 11: // Admin Set WK2 Mode, not implemented here
-            winkey_state=FREE;
+          case ADMIN_SETWK2:
+            winkey_state=FREE;  // not implemented
             break;
-          case 12: // Admin Dump EEPROM
+          case ADMIN_DUMPEEPROM:
             winkey_state=RDPROM;
             break;
-          case 13: // Admin Load EEPROM
+          case ADMIN_LOADEEPROM:
             winkey_state=WRPROM;
             break;
-          case 14: // Admin send standalone message
+          case ADMIN_SENDMSG:
             winkey_state=MESSAGE;
             break;
-          case 15: // Admin Load XMODE
-            winkey_state=SWALLOW;
+          case ADMIN_LOADXMODE:
+            winkey_state=SWALLOW;  // not (yet) implemented, letter spacing etc.
             break;
-          case 16: // Admin Reserved (return a zero!)
+          case ADMIN_CMD16: // Admin Reserved (return a zero!)
             ToHost(0);
             winkey_state=FREE;
             break;
-          case 17: // Admin Set High Baud
-#ifdef HWSERIAL          
+          case ADMIN_HIGHBAUD: // Admin Set High Baud
+#ifdef HWSERIAL
             Serial.end();
             Serial.begin(9600);
 #endif
 #ifdef SWSERIAL
             swserial.end();
             swserial.begin(9600);
-#endif                              
+#endif
             winkey_state=FREE;
             break;
-          case 18: // Admin Set Low Baud
-#ifdef HWSERIAL          
+          case ADMIN_LOWBAUD: // Admin Set Low Baud
+#ifdef HWSERIAL
             Serial.end();
             Serial.begin(1200);
 #endif
 #ifdef SWSERIAL
             swserial.end();
             swserial.begin(1200);
-#endif 
-            break;                                       
-          case 19: // Admin reserved
-          case 20: // Admin reserved
+#endif
+            break;
+          case ADMIN_CMD19: // Admin reserved
+          case ADMIN_CMD20: // Admin reserved
+             winkey_state=FREE;
+             break;
           default: // Should not occur.
              winkey_state=FREE;
-             break;               
+             break;
         }
         break;
       case SIDETONE:
         Sidetone=byte;
         myfreq=4000/(Sidetone & 0x0F);
+#ifdef CWKEYERSHIELD
+        if (myfreq <= 1270) {
+          cwshield.sidetonefrequency((myfreq+5)/10);
+        } else {
+          cwshield.sidetonefrequency(127);
+        }
+#endif
         winkey_state=FREE;
         break;
       case WKSPEED:
         HostSpeed=byte;
+        if (HostSpeed > 99) HostSpeed=99;
 #ifdef CWKEYERSHIELD
         if (HostSpeed != 0) {
           cwshield.cwspeed(HostSpeed);
@@ -1717,7 +1838,7 @@ void WinKey_state_machine() {
           tuning=1;
           if (PTT_ENABLED) {
             ptt_on();
-            delay(150);
+            delay(100);
           }
           keydown();
         } else {
@@ -1764,6 +1885,13 @@ void WinKey_state_machine() {
           case  2:
             Sidetone=byte;
             myfreq=4000/(Sidetone & 0x0F);
+#ifdef CWKEYERSHIELD
+            if (myfreq <= 1270) {
+              cwshield.sidetonefrequency((myfreq+5)/10);
+            } else {
+              cwshield.sidetonefrequency(127);
+            }
+#endif
             break;
           case  3:
             Weight=byte;
@@ -1847,16 +1975,20 @@ void WinKey_state_machine() {
         Ratio=byte;
         winkey_state=FREE;
         break;
+      //
+      // Here comes a bunch of "buffered" commands. We do nothing HERE,
+      // since the commands are simply queued
+      //
       case SETPTT:
-        // buffered PTT ignored
+        queue(2,SETPTT,byte,0);
         winkey_state=FREE;
         break;
       case KEYBUF:
-        //buffered key-down ignored
+        queue(2,KEYBUF,byte,0);
         winkey_state=FREE;
         break;
       case WAIT:
-        // buffered wait ignored
+        queue(2,WAIT,byte,0);
         winkey_state=FREE;
         break;
       case PROSIGN:
@@ -1865,16 +1997,16 @@ void WinKey_state_machine() {
           inum=1;
         } else {
          // character_buffer prosign command
-         queue(3,0x1b,ps1,byte);
+         queue(3,PROSIGN,ps1,byte);
          winkey_state=FREE;
         }
         break;
       case BUFSPD:
-        // buffered speed change ignored
+        queue(2,BUFSPD,byte,0);
         winkey_state=FREE;
         break;
       case HSCWSPD:
-        // HSCW speed change ignored
+        queue(2,HSCWSPD,byte,0);
         break;
       default:
         winkey_state=FREE;
@@ -2085,20 +2217,11 @@ void loop() {
        // compute a "virtual" SpeedPot value since reporting this back
        // is part of the WK protocol
        //
-       if (keyer_state == CHECK || num_elements > 5) myspeed=Speed; // do not change speed in the midst of a letter
        SpeedPot = Speed - MinWPM; // maintain "virtual" value of speed pot
        if (Speed < MinWPM)  SpeedPot=0;
-       if (SpeedPot > 31) SpeedPot=31;
+       if (SpeedPot > WPMrange) SpeedPot=WPMrange;
 #endif
-       //
-       // HostMode speed overrides "local" speed
-       //
-       if (HostSpeed == 0) {
-         myspeed=Speed;
-       } else {
-         myspeed=HostSpeed;
-       }
-      break;
+       break;
     case 2:
        //
        // Report side tone enable etc. to upstream software
