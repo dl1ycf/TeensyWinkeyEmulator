@@ -50,6 +50,6 @@
 // defined here well be overwritten upon the first reading of the pots.
 //
 ////////////////////////////////////////////////////////////////////////////
-#define MY_MUTE_OPTION                0   // set to 1 then RX audio is muted during CW PTT
+#define MY_MUTE_OPTION                1   // set to 1 then RX audio is muted during CW PTT
 #define MY_DEFAULT_FREQ             800   // initial setting of side tone frequency
 #define MY_DEFAULT_VOLUME            40   // initial setting of side tone volume (0-127)
