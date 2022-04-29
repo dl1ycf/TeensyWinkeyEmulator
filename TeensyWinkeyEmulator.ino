@@ -10,17 +10,14 @@
 // It can make use of the "AUDIO" features of Teensy 4.0
 // There are some basic #define's in the file config.h
 // which control which "backends" are used for signalling key-up/down and
-// PTT on/off events, and the way to produce a side tone. This choice
-// also affects which Serial module can be used.
+// PTT on/off events, and the way to produce a side tone.
 //
 //
 // Incompatible options from config.h (to be cleared up below):
 //
-// -  HWSERIAL overrides SWSERIAL
 // -  CWKEYERSHIELD overrides USBMIDI and MOCOLUFA.
 // -  USBMIDI overrides MOCOLUFA
 // -  MOCOLUFA disables HWSERIAL
-// -  SWSERIAL is disables unless RXD and TXD is defined
 //
 //
 // File config.h also defines the hardware pins (digital input, digital output,
@@ -179,14 +176,6 @@
 
 #ifdef MOCOLUFA
 #undef HWSERIAL
-#endif
-
-#ifdef HWSERIAL
-#undef SWSERIAL
-#endif
-
-#if !defined(RXD_PIN) || !defined(TXD_PIN)
-#undef SWSERIAL
 #endif
 
 #if defined(USBMIDI) || defined(MOCOLUFA)
@@ -359,31 +348,31 @@ enum ADMIN_COMMAND {
 //   b2:    echo characters received from the serial line when they are keyed
 //   b0:    use contest (CT) spacing
 //
-// NOTE:
-// When reporting EEPROM contents, report un-used parameters as well, to be compatible with
-// WinKey programs
-//
 
-const static uint8_t MAGIC=0xA5;        // EEPROM magic byte
-static uint8_t ModeRegister=0x10;       // Iambic-A by default
-static uint8_t Speed=21;                // overridden by the speed pot in standalong mode
-static uint8_t Sidetone=5;              // 800 Hz
-static uint8_t Weight=50;               // used to modify dit/dah length
-static uint8_t LeadIn=0;                // PTT Lead-in time (in units of 10 ms)
-static uint8_t Tail=0;                  // PTT tail (in 10 ms), zero means "use hang bits"
-static uint8_t MinWPM=8;                // CW speed when speed pot maximally CCW
-static uint8_t WPMrange=20;             // CW speed range for SpeedPot
-static uint8_t Extension=0;             // ignored in this code (1st extension)
-static uint8_t Compensation=0;          // Used to modify dit/dah lengths
-static uint8_t Farnsworth=10;           // Farnsworth speed (10 means: no Farnsworth)
-static uint8_t PaddlePoint=50;          // ignored in this code (Paddle Switchpoint setting)
-static uint8_t Ratio=50;                // dah/dit ratio = (3*ratio)/50
-static uint8_t PinConfig=0x0E;          // PTT disabled
-const static uint8_t k12ext=0;          // Letter space, zero cuts, etc. (unused)
-const static uint8_t CmdWpm=15;         // ignored in this code (Command WPM setting)
-const static uint8_t FreePtr=0x18;      // free space in message memory. Initially 24.
-const static uint8_t MsgPtr=0x18;       // Pointer to empty message
-
+static uint8_t MAGIC=0xA5;              // addr=0x00 // EEPROM magic byte
+static uint8_t ModeRegister=0x10;       // addr=0x01 // Iambic-A by default
+static uint8_t Speed=21;                // addr=0x02 // overridden by the speed pot in standalong mode
+static uint8_t Sidetone=5;              // addr=0x03 // 800 Hz
+static uint8_t Weight=50;               // addr=0x04 // used to modify dit/dah length
+static uint8_t LeadIn=0;                // addr=0x05 // PTT Lead-in time (in units of 10 ms)
+static uint8_t Tail=0;                  // addr=0x06 // PTT tail (in 10 ms), zero means "use hang bits"
+static uint8_t MinWPM=8;                // addr=0x07 // CW speed when speed pot maximally CCW
+static uint8_t WPMrange=20;             // addr=0x08 // CW speed range for SpeedPot
+static uint8_t Extension=0;             // addr=0x09 // ignored in this code (1st extension)
+static uint8_t Compensation=0;          // addr=0x0a // Used to modify dit/dah lengths
+static uint8_t Farnsworth=10;           // addr=0x0b // Farnsworth speed (10 means: no Farnsworth)
+static uint8_t PaddlePoint=50;          // addr=0x0c // ignored in this code (Paddle Switchpoint setting)
+static uint8_t Ratio=50;                // addr=0x0d // dah/dit ratio = (3*ratio)/50
+static uint8_t PinConfig=0x0E;          // addr=0x0e // PTT disabled
+                                        // addr=0x0f // k12ext (Letter space, zero cuts, etc.)
+                                        // addr=0x10 // CmdWpm
+                                        // addr=0x11 // FreePtr
+                                        // addr=0x12 // MsgPtr1
+                                        // addr=0x13 // MsgPtr2
+                                        // addr=0x14 // MsgPtr3
+                                        // addr=0x15 // MsgPtr4
+                                        // addr=0x16 // MsgPtr5
+                                        // addr=0x17 // MsgPtr6
 
 //
 // Macros to read the ModeRegister
@@ -412,6 +401,7 @@ static uint8_t HostSpeed=0;             // Speed from host in host-mode.
 static uint8_t WKstatus=0xC0;           // reported to host when it changes
 
 static uint16_t inum;                   // counter for number of bytes received in a given state
+static uint8_t  highbaud=0;             // flag, set if we use high baud rate
 
 static uint8_t ps1;                     // first byte of a pro-sign
 static uint8_t pausing=0;               // "pause" state
@@ -447,6 +437,7 @@ static uint8_t sending=0x01;    // bitmap for current morse character to be sent
 static uint8_t collecting=0;    // bitmap for character entered with the paddle
 static uint8_t collpos=0;       // position for collecting
 static uint8_t sentspace=1;     // space already sent for inter-word distance
+static uint8_t ReplayPointer=0; // This indicates a message is being sent
 static unsigned long wait;      // when "actual" reaches this value terminate current keyer state
 static unsigned long last;      // time of last enddot/enddash
 static unsigned long actual;    // time-stamp for this execution of loop()
@@ -572,22 +563,13 @@ void init_eeprom();
 //
 //////////////////////////////////////////////////////////////////////////////
 
-#ifdef SWSERIAL
-#include <SoftwareSerial.h>
-SoftwareSerial swserial = SoftwareSerial(RXD_PIN, TXD_PIN);
-#endif
-
 void setup() {
 
 #ifdef HWSERIAL
   Serial.begin(1200);  // baud rate has no meaning on 32U4 and Teensy systems
+  highbaud=0;
 #endif
 
-#ifdef SWSERIAL
-  pinMode(RXD_PIN, INPUT);
-  pinMode(TXD_PIN, OUTPUT);
-  swserial.begin(1200);
-#endif
 #ifdef MOCOLUFA
   Serial.begin(31250);
 #endif
@@ -601,6 +583,24 @@ void setup() {
   pinMode(PaddleRight, INPUT_PULLUP);
 #endif
 
+#ifdef MSG1PIN
+  pinMode(MSG1PIN, INPUT_PULLUP);
+#endif  
+#ifdef MSG2PIN
+  pinMode(MSG2PIN, INPUT_PULLUP);
+#endif
+#ifdef MSG3PIN
+  pinMode(MSG3PIN, INPUT_PULLUP);
+#endif
+#ifdef MSG4PIN
+  pinMode(MSG4PIN, INPUT_PULLUP);
+#endif
+#ifdef MSG5PIN
+  pinMode(MSG5PIN, INPUT_PULLUP);
+#endif
+#ifdef MSG6PIN
+  pinMode(MSG6PIN, INPUT_PULLUP);
+#endif  
 
 #ifdef CW1
   // active-high CW output
@@ -692,7 +692,8 @@ void read_from_eeprom() {
 // write magic bytes and current settings to eeprom
 //
 // This is currently ONLY used to write compile-time default settings into
-// the EEPROM, if upon startup the EEPROM is found "empty".
+// a "virgin" EEPROM. Therefore, we also give some default values to the
+// unused parameters.
 //
 // The EEPROM is further updated by the "LOAD EEPROM" admin command.
 //
@@ -714,8 +715,16 @@ void write_to_eeprom() {
     EEPROM.update(12, PaddlePoint);
     EEPROM.update(13, Ratio);
     EEPROM.update(14, PinConfig);
+    EEPROM.update(15, 0);      // default k12ext
+    EEPROM.update(16, 15);     // default CmdWpm
+    EEPROM.update(17, 0x18);   // default FreePtr
+    EEPROM.update(18, 0);      // default MsgPtr1
+    EEPROM.update(19, 0);      // default MsgPtr2
+    EEPROM.update(20, 0);      // default MsgPtr3
+    EEPROM.update(21, 0);      // default MsgPtr4
+    EEPROM.update(22, 0);      // default MsgPtr5
+    EEPROM.update(23, 0);      // default MsgPtr6
 }
-
 //////////////////////////////////////////////////////////////////////////////
 //
 // init_eeprom:
@@ -769,9 +778,6 @@ int FromHost() {
   c=Serial.read();
 #endif
 
-#ifdef SWSERIAL
-  c=swserial.read();
-#endif
   return c;
 }
 
@@ -785,10 +791,6 @@ void ToHost(int c) {
 #ifdef HWSERIAL
   Serial.write(c);
 #endif
-
-#ifdef SWSERIAL
-  swserial.write(c);
-#endif
 }
 
 //////////////////////////////////////////////////////////////////////////////
@@ -798,14 +800,11 @@ void ToHost(int c) {
 //////////////////////////////////////////////////////////////////////////////
 
 int ByteAvailable() {
+  int rc=0;
 #ifdef HWSERIAL
-  return Serial.available();
+  rc=Serial.available();
 #endif
-
-#ifdef swserial
-  return swserial.available();
-#endif
-  return 0;
+  return rc;
 }
 
 //////////////////////////////////////////////////////////////////////////////
@@ -1049,6 +1048,7 @@ int FromBuffer() {
 // read from bit0 to bit7
 // 0 = dot, 1 = dash
 // highest bit set indicated end-of-character (not to be sent as a dash!)
+// This implies a character can have at most 7 elements.
 //////////////////////////////////////////////////////////////////////////////
 
 unsigned char morse[58] = {
@@ -1058,26 +1058,26 @@ unsigned char morse[58] = {
    0x01,     //36 $    not in ITU-R M.1677-1
    0x01,     //37 %    not in ITU-R M.1677-1
    0x01,     //38 &    not in ITU-R M.1677-1
-   0x5e,     //39 '    .----.
-   0x36,     //40 (    -.--.
-   0x6d,     //41 )    -.--.-
+   0x5E,     //39 '    .----.
+   0x2D,     //40 (    -.--.
+   0x6D,     //41 )    -.--.-
    0x01,     //42 *    not in ITU-R M.1677-1
-   0x2a,     //43 +    .-.-.
+   0x2A,     //43 +    .-.-.
    0x73,     //44 ,    --..--
    0x61,     //45 -    -....-
    0x6A,     //46 .    .-.-.-
    0x29,     //47 /    -..-.
-   0x3f,     //48 0    -----
-   0x3e,     //49 1    .----
-   0x3c,     //50 2    ..---
+   0x3F,     //48 0    -----
+   0x3E,     //49 1    .----
+   0x3C,     //50 2    ..---
    0x38,     //51 3    ...--
    0x30,     //52 4    ....-
    0x20,     //53 5    .....
    0x21,     //54 6    -....
    0x23,     //55 7    --...
    0x27,     //56 8    ---..
-   0x2f,     //57 9    ----.
-   0x78,     //58 :    ---...
+   0x2F,     //57 9    ----.
+   0x47,     //58 :    ---...
    0x01,     //59 ;    not in ITU-R M.1677-1
    0x01,     //60 <    not in ITU-R M.1677-1
    0x31,     //61 =    -...-
@@ -1090,27 +1090,48 @@ unsigned char morse[58] = {
    0x09,     //68 D    -..
    0x02,     //69 E    .
    0x14,     //70 F    ..-.
-   0x0b,     //71 G    --.
+   0x0B,     //71 G    --.
    0x10,     //72 H    ....
    0x04,     //73 I    ..
-   0x1e,     //74 J    .---
-   0x0d,     //75 K    -.-
+   0x1E,     //74 J    .---
+   0x0D,     //75 K    -.-
    0x12,     //76 L    .-..
    0x07,     //77 M    --
    0x05,     //78 N    -.
-   0x0f,     //79 O    ---
+   0x0F,     //79 O    ---
    0x16,     //80 P    .--.
-   0x1b,     //81 Q    --.-
-   0x0a,     //82 R    .-.
+   0x1B,     //81 Q    --.-
+   0x0A,     //82 R    .-.
    0x08,     //83 S    ...
    0x03,     //84 T    -
-   0x0c,     //85 U    ..-
+   0x0C,     //85 U    ..-
    0x18,     //86 V    ...-
-   0x0e,     //87 W    .--
+   0x0E,     //87 W    .--
    0x19,     //88 X    -..-
-   0x1d,     //89 Y    -.--
+   0x1D,     //89 Y    -.--
    0x13      //90 Z    --..
 };
+
+uint8_t ASCII_to_Morse(int c) {
+  //
+  // Convert Ascii character to dit/dah pattern
+  //  
+  if (c >= 'a' && c <= 'z') c -= 32;
+  if (c >= 33 && c <= 90) {
+    return morse[c-33];  
+  } else {
+    return 1;
+  }
+}
+
+uint8_t Morse_to_ASCII(int m) {
+  // Convert dit/dah pattern to ASCII
+  int i;
+  for (i=33; i<=90; i++) {
+    if (morse[i-33] == m) return i;
+  }
+  return 32; // notfound: return a space
+}
 
 ///////////////////////////////////////
 //
@@ -1133,12 +1154,15 @@ void keyer_state_machine() {
 
 
   //
-  // Abort sending buffered characters (and clear the buffer)
-  // if a paddle is hit. Set "breakin" flag
+  // If a paddle or the straight key is hit:
+  // -abort sending buffered characters (and clear the buffer)
+  // -abort sending EEPROM messages
+  // -set "breakin" flag (for WK2 status message)
   //
   if ((eff_kdash || eff_kdot || straight) && (keyer_state >= SNDCHAR_PTT)) {
     breakin=1;
     clearbuf();
+    ReplayPointer=0;
     keyer_state=CHECK;
     wait=actual+10;      // will be re-computed soon
   }
@@ -1220,11 +1244,8 @@ void keyer_state_machine() {
         // a morse code pattern has been entered and the character is complete
         // echo it in ASCII on the display and on the serial line
         collecting |= 1 << collpos;
-        for (i=33; i<= 90; i++) {
-          if (collecting == morse[i-33]) {
-             if (PADDLE_ECHO && hostmode) ToHost(i);
-             break;
-          }
+        if (PADDLE_ECHO && hostmode) {
+          ToHost(Morse_to_ASCII(collecting));
         }
         collecting=0;
         collpos=0;
@@ -1418,6 +1439,42 @@ void keyer_state_machine() {
       }
       break;
   }
+
+  //
+  // If keyer is idle and a EEPROM message is to be sent, clear the buffer
+  // and send message. Make a push-button cancel a PAUSE condition.
+  //
+  if (ReplayPointer !=0 && keyer_state == CHECK) {
+    pausing=0;
+    clearbuf();
+    sending = EEPROM.read(ReplayPointer++);
+    if (sending & 0x80) {
+      sending &= 0x7F;
+      ReplayPointer=0;
+    }
+    //
+    // The special "pattern" 0x1c is used to define a space.
+    // When encountering a space and PTT is not set, activate PTT
+    // but disregard lead-ins, since we are waiting for 4 dot-lengths
+    // anyway.
+    //
+    if (sending == 0x1c) {
+      sending=0x01;
+      wait=actual+wlen;
+      if (!ptt_stat && PTT_ENABLED) {
+        ptt_on();
+      }
+      keyer_state=SNDCHAR_DELAY;
+    } else {
+      wait=actual;  // no lead-in wait by default
+      if (!ptt_stat && PTT_ENABLED) {
+        ptt_on();
+        wait=actual+LeadIn*10;
+      }
+      keyer_state=SNDCHAR_PTT;
+    }  
+  }
+
   //
   // If keyer is idle and buffered characters available, transfer next one to "sending"
   // Rely on the "completeness" of buffered commands
@@ -1498,18 +1555,14 @@ void keyer_state_machine() {
          keyer_state=SNDCHAR_DELAY;
          break;
       default:
-        // ignore "non-key'able characters"
-        if (byte >='a' && byte <= 'z') byte -= 32;  // convert to lower case
-        if (byte > 32 && byte <= 'Z') {
-          sending=morse[byte-33];
-          if (sending != 1) {
-            wait=actual;  // no lead-in wait by default
-            if (!ptt_stat && PTT_ENABLED) {
-              ptt_on();
-              wait=actual+LeadIn*10;
-            }
-            keyer_state=SNDCHAR_PTT;
+        sending=ASCII_to_Morse(byte);
+        if (sending != 1) {
+          wait=actual;  // no lead-in wait by default
+          if (!ptt_stat && PTT_ENABLED) {
+            ptt_on();
+            wait=actual+LeadIn*10;
           }
+          keyer_state=SNDCHAR_PTT;
         }
         break;
     }
@@ -1561,9 +1614,8 @@ void WinKey_state_machine() {
       winkey_state=FREE;
       break;
      case RDPROM:
-      // dump EEPROM command
-      // report constants for addr 0 and 15-23
-      // report zeroes for addr 24-255
+      // dump EEPROM command. Report "standard" magic byte
+      // at address 0.
       //
       // Nothing must interrupt us, therefore no state machine
       // at 1200 baud, each character has a mere transmission time
@@ -1573,24 +1625,26 @@ void WinKey_state_machine() {
       //
 
       for (inum=0; inum<256; inum++) {
-        if (inum ==  0              ) ToHost(0xA5);
-        if (inum >=  1 && inum <= 14) ToHost(EEPROM.read(inum));
-        if (inum == 15              ) ToHost(k12ext);
-        if (inum == 16              ) ToHost(CmdWpm);
-        if (inum == 17              ) ToHost(FreePtr);
-        if (inum >= 18 && inum <= 23) ToHost(MsgPtr);
-        if (inum >= 24              ) ToHost(0);
-        delay(6);
-        DrainMIDI();
-        delay(6);
-        DrainMIDI();
+        if (inum ==  0) {
+          ToHost(0xA5);  // report 0xA5 no matter which magic byte we are using here
+        } else {
+          ToHost(EEPROM.read(inum));
+        }
+        if (highbaud) {
+          delay(1);
+          DrainMidi();
+        } else {
+          delay(6);
+          DrainMIDI();
+          delay(6);
+          DrainMIDI();
+        }
       }
       winkey_state=FREE;
       break;
     case WRPROM:
       //
-      // Load EEPROM command. Only load bytes at addr
-      // 1 to 14 since we make no use of the others. Write our
+      // Load EEPROM command. Write our
       // "own" magic byte to addr 0.
       // Nothing must interrupt us, hence no state machine
       // no delay is required upon reading, but check for
@@ -1599,8 +1653,11 @@ void WinKey_state_machine() {
       for (inum=0; inum<256; inum++) {
         while (!ByteAvailable()) ;
         byte=FromHost();
-        if (inum == 0              ) EEPROM.update(0, MAGIC);
-        if (inum >= 1 && inum <= 14) EEPROM.update(inum, byte);
+        if (inum == 0) {
+          EEPROM.update(0, MAGIC);
+        } else {
+          EEPROM.update(inum, byte);
+        }
         DrainMIDI();
       }
       winkey_state=FREE;
@@ -1652,14 +1709,16 @@ void WinKey_state_machine() {
             winkey_state=SWALLOW;  // expect a byte 0xFF
             break;
           case ADMIN_RESET:
+            //
+            // After doing AdminReset, the client must wait a small time
+            // before sending "something", if the baud rate is changed here
+            //
+            if (highbaud) {
 #ifdef HWSERIAL
-            Serial.end();
-            Serial.begin(1200);
-#endif
-#ifdef SWSERIAL
-            swserial.end();
-            swserial.begin(1200);
-#endif
+              Serial.end();
+              Serial.begin(1200);
+#endif              
+            }  
             read_from_eeprom();
             hostmode=0;
             HostSpeed=0;
@@ -1673,19 +1732,15 @@ void WinKey_state_machine() {
             winkey_state=FREE;
             break;
           case ADMIN_CLOSE:
+            //
+            // Cannot reset baud rate, since some clients will
+            // very quickly send "something" after the admin close
+            //
             hostmode = 0;
             HostSpeed = 0;
             clearbuf();
             // restore "standalone" settings from EEPROM
             read_from_eeprom();
-#ifdef HWSERIAL
-            Serial.end();
-            Serial.begin(1200);
-#endif
-#ifdef SWSERIAL
-            swserial.end();
-            swserial.begin(1200);
-#endif
             winkey_state=FREE;
             break;
           case ADMIN_ECHO:
@@ -1743,25 +1798,23 @@ void WinKey_state_machine() {
             winkey_state=FREE;
             break;
           case ADMIN_HIGHBAUD: // Admin Set High Baud
-#ifdef HWSERIAL
-            Serial.end();
-            Serial.begin(9600);
-#endif
-#ifdef SWSERIAL
-            swserial.end();
-            swserial.begin(9600);
-#endif
+            if (!highbaud) {
+#ifdef HWSERIAL              
+              Serial.end();
+              Serial.begin(9600);
+#endif              
+              highbaud=1;
+            }  
             winkey_state=FREE;
             break;
           case ADMIN_LOWBAUD: // Admin Set Low Baud
-#ifdef HWSERIAL
-            Serial.end();
-            Serial.begin(1200);
-#endif
-#ifdef SWSERIAL
-            swserial.end();
-            swserial.begin(1200);
-#endif
+            if (highbaud) {
+#ifdef HWSERIAL              
+              Serial.end();
+              Serial.begin(1200);
+#endif              
+              highbaud=0;
+            }  
             break;
           case ADMIN_CMD19: // Admin reserved
           case ADMIN_CMD20: // Admin reserved
@@ -2052,8 +2105,7 @@ void analogDebounce(unsigned long actual, int pin, unsigned long *debounce, int 
   *debounce=actual+20;
 
   i=analogRead(pin); // 0 - 1023
-
-  *value = (15 * *value / 16 + i) ;  // output value in the range 0 - 16368
+  *value += (i - *value/16) ;  // output value in the range 0 - 16368
 }
 
 
@@ -2136,6 +2188,34 @@ void loop() {
   }
 #endif
 
+//
+// The message pins do not need debouncing.
+// Once a press event has been detected, the character
+// is sent completely before the ReplayPointer is again
+// looked at.
+//
+if (ReplayPointer == 0) {
+#ifdef MSG1PIN
+if (!digitalRead(MSG1PIN)) ReplayPointer=EEPROM.read(0x12);  
+#endif
+#ifdef MSG2PIN
+if (!digitalRead(MSG2PIN)) ReplayPointer=EEPROM.read(0x13);  
+#endif
+#ifdef MSG3PIN
+if (!digitalRead(MSG3PIN)) ReplayPointer=EEPROM.read(0x14);  
+#endif
+#ifdef MSG4PIN
+if (!digitalRead(MSG4PIN)) ReplayPointer=EEPROM.read(0x15);
+#endif
+#ifdef MSG5PIN
+if (!digitalRead(MSG5PIN)) ReplayPointer=EEPROM.read(0x16);
+#endif
+#ifdef MSG6PIN
+if (!digitalRead(MSG6PIN)) ReplayPointer=EEPROM.read(0x17);
+#endif
+}
+
+
 #ifdef POTPIN
   //
   // only query the potentiometer while the keyer is idle.
@@ -2209,7 +2289,8 @@ void loop() {
        // Adjust CW speed
        //
 #ifdef POTPIN
-      SpeedPot=(SpeedPinValue*WPMrange+8180)/16368; // between 0 and WPMrange
+      // ATTN: no overflow!
+      SpeedPot=((SpeedPinValue >> 8)*WPMrange+32) >> 6; // between 0 and WPMrange
       Speed=MinWPM+SpeedPot;
 #else
        //
