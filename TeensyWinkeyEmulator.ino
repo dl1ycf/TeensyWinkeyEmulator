@@ -1632,7 +1632,7 @@ void WinKey_state_machine() {
         }
         if (highbaud) {
           delay(1);
-          DrainMidi();
+          DrainMIDI();
         } else {
           delay(6);
           DrainMIDI();
