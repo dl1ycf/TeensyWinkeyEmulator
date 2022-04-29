@@ -1,11 +1,17 @@
 ////////////////////////////////////////////////////////////////////////////
 //
 // Example config.h file for a plain vanilla ArduinoUno
-// A "speed potentiometer" expected at analog input pin A2
+//
+// - it uses the built-in serial port (D0, D1)
+// - inputs for Paddle *and* a straight key can be connected (D2, D3, D4)
+// - four push-buttons for EEPROM messages (D8, D9, D10, D11)
+// - "speed potentiometer"  (A0)
+// - active-high KEY and PTT output (D5, D6)
+// - digital (square wave) output of a side tone (D7)
 //
 ////////////////////////////////////////////////////////////////////////////
 
-#define HWSERIAL                    // use standard serial connection (1200 baud) for Winkey protocol
+#define HWSERIAL                    // use sofware serial connection (1200 baud) for Winkey protocol
 
 ////////////////////////////////////////////////////////////////////////////
 //
@@ -15,14 +21,18 @@
 //
 ////////////////////////////////////////////////////////////////////////////
 
-#define PaddleRight              0   // Digital input for right paddle
-#define PaddleLeft               1   // Digital input for left paddle
-#define StraightKey              2   // Digital input for straight key
+#define PaddleRight              2   // Digital input for right paddle
+#define PaddleLeft               3   // Digital input for left paddle
+#define StraightKey              4   // Digital input for straight key
 #define CW1                      5   // Digital output (active high) for CW key-down
-//#define CW2                   10   // Digital output (active high) for CW key-down
-#define PTT1                     4   // Digital output (active high) for PTT on/off
-//#define PTT2                   6   // Digital output (active low)  for PTT on/off
-#define TONEPIN                7   // Digital output for square wave side tone
+#define PTT1                     6   // Digital output (active high) for PTT on/off
+#define TONEPIN                  7   // Digital output for square wave side tone
+
+#define MSG1PIN                  8   // Push-button for message #1
+#define MSG2PIN                  9   // Push-button for message #2  
+#define MSG3PIN                 10   // Push-button for message #3
+#define MSG4PIN                 11   // Push-button for message #4
+
 
 ////////////////////////////////////////////////////////////////////////////
 //
@@ -31,6 +41,4 @@
 //
 ////////////////////////////////////////////////////////////////////////////
 
-#define POTPIN                A2    // Analog input for speed pot handled in the keyer
-
-
+#define POTPIN                A0    // Analog input for speed pot handled in the keyer
