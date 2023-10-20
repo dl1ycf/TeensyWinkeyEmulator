@@ -1,18 +1,24 @@
 ////////////////////////////////////////////////////////////////////////////
 //
-// Example config.h file for a Leonardo. It does NOT use the USB serial
-// connection but rather the hardware UART (on D0 and A1). So the only
-// difference to the Arduino setup is to use SERIAL1 rather than SERIAL.
+// Example config.h file for an Arduino-Leonardo, a Teensy2, or other boards
+// using the 32U4 micro-controller. The only difference to
+// the "ArduinoUno" version is that the "Serial1" line and not the USB
+// connection is used for the WinKey protocol.
 //
+// - it uses the built-in serial port (this uses digital lines D0, D1)
 // - inputs for Paddle *and* a straight key can be connected (D2, D3, D4)
-// - four push-buttons for EEPROM messages (D8, D9, D10, D11)
 // - "speed potentiometer"  (analog input line A0)
+// - push-button array (analog input line A1)
 // - active-high KEY and PTT output (D5, D6)
 // - digital (square wave) output of a side tone (D7)
+// - additional "pulse shaper" output for modulating a possibly free-running
+//   side tone
 //
 ////////////////////////////////////////////////////////////////////////////
 
-#define MYSERIAL Serial1
+#define POWERSAVE                // enable "sleep" mode if not used for some time
+#define MYSERIAL Serial1         // Use hardware UART rather than USB connection
+#define MIDIUSB
 
 ////////////////////////////////////////////////////////////////////////////
 //
@@ -26,15 +32,20 @@
 //
 // noTone(TONEPIN)  ==> tone(TONEPIN, current_frequency, 10)
 //
+// Note it is also possible to use an external free-running sine oscillator
+// and modulate it using the "pulse shaper" output.
+//
+// For THIS keyer the "pulse shaper" and "key down" lines are functionally equivalent.
+//
 ////////////////////////////////////////////////////////////////////////////
 
 #define PaddleRight              2   // Digital input for right paddle
 #define PaddleLeft               3   // Digital input for left paddle
 #define StraightKey              4   // Digital input for straight key
-#define CW1                      5   // Digital output (active high) for CW key-down
-#define PTT1                     6   // Digital output (active high) for PTT on/off
-#define TONEPIN                  7   // Digital output for square wave side tone
-#define PULSESHAPER             13   // Digital output for "switching on" side  tone
+#define CW1                      6   // Digital output (active high) for CW key-down
+#define PTT1                     7   // Digital output (active high) for PTT on/off
+#define TONEPIN                 10   // Digital output for square wave side tone
+#define PULSESHAPER              9   // Digital output for "switching on" side  tone
 
 ////////////////////////////////////////////////////////////////////////////
 //

@@ -1,10 +1,15 @@
 ////////////////////////////////////////////////////////////////////////////////////////
 //
-// Teensy keyer with audio (WinKey emulator)
+// CW keyer with audio (WinKey emulator)
 //
-// (C) Christoph van Wüllen, DL1YCF, 2020/2021
+// (C) Christoph van Wüllen, DL1YCF, 2020-2023
 //
-// Designed for Arduino or Teensy
+// Tested with
+// - Arduino with ATmega 328p (Uno) or 32U4 (Leonardo) processors
+// - Teensy 2.0  (32U4 processor)
+// - Teensy 4.0  (Cortex processor) without audio
+// - Teensy 4.0  with AudioShield (SGTL5000 codec)
+// - Teensy 4.0  with CWKeyerShield.
 //
 // It can make use of the "MIDI" features of the Teensy 2.0 and 4.0
 // It can make use of the "AUDIO" features of Teensy 4.0
@@ -12,21 +17,18 @@
 // which control which "backends" are used for signalling key-up/down and
 // PTT on/off events, and the way to produce a side tone.
 //
+// Some recent additions:
+// - supports push-button array to "play" CW messages from EEPROM
+// - support low-power mode on AVR CPUs (Uno, Leonardo, Micro, Teensy2.0)
 //
-// Incompatible options from config.h (to be cleared up below):
-//
-// -  CWKEYERSHIELD overrides USBMIDI and MOCOLUFA.
-// -  USBMIDI overrides MOCOLUFA
-// -  MOCOLUFA disables HWSERIAL
-//
-//
-// File config.h also defines the hardware pins (digital input, digital output,
+// File config.h mostly defines the hardware pins (digital input, digital output,
 // analog input) to be used. Note that when using CWKEYERSHIELD, a speed pot
-// should be handled there (below we #undef POTPIN if using CWKEYERSHIELD).
+// is handled there.
 //
 //////////////////////////////////////////////////////////////////////////////////////////
 
 #include "config.h"
+#include <EEPROM.h>
 
 
 ////////////////////////////////////////////////////////////////////////////////////////
@@ -35,11 +37,11 @@
 //
 ////////////////////////////////////////////////////////////////////////////////////////
 //
-//   MIDI (only with CWKEYERSHIELD, USBMIDI, or MOCOLUFA)
-//   =========================================================
+//   MIDI (only when using USBMIDI, MIDIUSB,  or the CWKeyerShield library)
+//   ======================================================================
 //
 // - key-up/down and PTT-on/off events are sent via MIDI to the computer.
-//   For USBMIDI and MOCOLUFA, this is coded here in the sketch, while for
+//   For USBMIDI and MIDIUSB, this is coded here in the sketch, while for
 //   the CWKeyerShield library this is done inside the library.
 //
 ////////////////////////////////////////////////////////////////////////////////////////
@@ -57,15 +59,13 @@
 //
 ////////////////////////////////////////////////////////////////////////////////////////
 //
-//   High-quality side tone (only with CWKEYERSHIELD)
-//   =====================================================
+//   High-quality side tone (only with TEENSY4AUDIO and CWKEYERSHIELD)
+//   =================================================================
 //
-//   A high-quality side tone is generated, using either I2S or MQS output
-//   (an i2s audio shield is required in the latter case). The Teensy
-//   shows up at the computer as a sound card which you can choose from
-//   your SDR console application. In this case, the headphone connected
-//   to the Teensy (both for MQS and I2S) will have RX audio as well as
-//   a low-latency side tone.
+//   A high-quality side tone is generated, using an audio codec connected
+//   to the Teensy via i2s. When using the KeyerShield library, the device
+//   also operates as an USB sound card so the side tone can be mixed with
+//   the RX audio.
 //
 ////////////////////////////////////////////////////////////////////////////////////////
 //
@@ -160,30 +160,62 @@
 
 ////////////////////////////////////////////////////////////////////////////////////////
 //
-// Eliminate incompatible options
+// Eliminate incompatible options and set defaults
 //
 ////////////////////////////////////////////////////////////////////////////////////////
 
+#ifndef __AVR__
+// deep sleep mode currently implemented only for AVR architecture
+#undef  POWERSAVE
+#endif
+
 #ifdef CWKEYERSHIELD
-#undef USBMIDI
-#undef MOCOLUFA
-#undef POTPIN
-#endif
 
-#ifdef USBMIDI
-#undef MOCOLUFA
-#endif
-
-#ifdef MOCOLUFA
-#undef HWSERIAL
-#endif
-
-#if defined(USBMIDI) || defined(MOCOLUFA)
+#include "CWKeyerShield.h"
+#undef USBMIDI              // handled in the KeyerShield library
+#undef MIDIUSB
+#undef POTPIN               // handled in the KeyerShield library
+#undef TEENSY4AUDIO         // audio handled in the KeyerShield library
+////////////////////////////////////////////////////////////////////////////////////////
 //
-// The CWKeyerShield (Teensy4) library has built-in defaults,
-// for USBMIDI (e.g. Teensy2) or MOCOLUFA (Arduino) we define
-// defaults here that can be overriden by defining these values
-// in the config.h file.
+// set KeyerShield variables that are *not* defined in config.h to -1
+//
+////////////////////////////////////////////////////////////////////////////////////////
+
+#ifndef SHIELD_ANALOG_SIDETONEVOLUME
+#define SHIELD_ANALOG_SIDETONEVOLUME   -1
+#endif
+#ifndef SHIELD_ANALOG_SIDETONEFREQ
+#define SHIELD_ANALOG_SIDETONEFREQ     -1
+#endif
+#ifndef SHIELD_ANALOG_MASTERVOLUME
+#define SHIELD_ANALOG_MASTERVOLUME     -1
+#endif
+#ifndef SHIELD_ANALOG_SPEED
+#define SHIELD_ANALOG_SPEED            -1
+#endif
+#ifndef SHIELD_DIGITAL_MICPTT
+#define SHIELD_DIGITAL_MICPTT          -1
+#endif
+#ifndef SHIELD_DIGITAL_PTTOUT
+#define SHIELD_DIGITAL_PTTOUT          -1
+#endif
+#ifndef SHIELD_DIGITAL_CWOUT
+#define SHIELD_DIGITAL_CWOUT           -1
+#endif
+
+#endif // CWKEYERSHIELD
+
+//
+// USBMIDI (Teensy) and MIDIUSB (Leonardo) are mutually exclusive
+//
+#ifdef USBMIDI
+#undef MIDIUSB
+#endif
+
+//
+// Some defaults for MIDI channel and notes. These are taken only
+// if *not* defined in the config.h file.
 //
 #ifndef MY_MIDI_CHANNEL
 #define MY_MIDI_CHANNEL 5
@@ -194,14 +226,10 @@
 #ifndef MY_PTT_NOTE
 #define MY_PTT_NOTE 2
 #endif
-#endif // USBMIDI or MOCOLUFA
-
-#include <EEPROM.h>
-
-#ifdef CWKEYERSHIELD
-#include "CWKeyerShield.h"
-#undef POTPIN
+#ifndef MY_SPEED_CTL
+#define MY_SPEED_CTL 3
 #endif
+
 
 //
 // keyer state machine: the states
@@ -282,20 +310,25 @@ enum ADMIN_COMMAND {
   ADMIN_PAD_A2D    =  5,
   ADMIN_SPD_A2D    =  6,
   ADMIN_GETVAL     =  7,
-  ADMIN_CMD8       =  8,
-  ADMIN_GETCAL     =  9,
-  ADMIN_SETWK1     = 10,
-  ADMIN_SETWK2     = 11,
+  ADMIN_DEBUG      =  8,  // K1EL Debug use only
+  ADMIN_GETMAJOR   =  9,  // Firmware major version
+  ADMIN_SETWK1     = 10,  // Disables pushbutton reporting
+  ADMIN_SETWK2     = 11,  // Pushbutton reporting enabled, alternate WK status mode
   ADMIN_DUMPEEPROM = 12,
   ADMIN_LOADEEPROM = 13,
   ADMIN_SENDMSG    = 14,
-  ADMIN_LOADXMODE  = 15,
-  ADMIN_CMD16      = 16,
-  ADMIN_HIGHBAUD   = 17,
-  ADMIN_LOWBAUD    = 18,
-  ADMIN_CMD19      = 19,
-  ADMIN_CMD20      = 20
-};
+  ADMIN_LOADX1     = 15,
+  ADMIN_FWUPDT     = 16,
+  ADMIN_LOWBAUD    = 17,
+  ADMIN_HIGHBAUD   = 18,
+  ADMIN_RTTY       = 19, // Set RTTY registers, WK3.1 only
+  ADMIN_SETWK3     = 20, // Set WK3 mode
+  ADMIN_VCC        = 21, // Read Back Vcc
+  ADMIN_LOADX2     = 22, // WK3 only
+  ADMIN_GETMINOR   = 23, // Firmware minor version, WK3 only
+  ADMIN_GETTYPE    = 24, // Get IC Type, WK3 only
+  ADMIN_VOLUME     = 25  // Set side tone volume low/high, WK3 only
+};  
 
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -410,7 +443,9 @@ static uint8_t straight=0;              // state of the straight key (1 = presse
 static uint8_t tuning=0;                // "Tune" mode active, deactivate paddle
 static uint8_t hostmode  = 0;           // host mode
 static uint8_t SpeedPot =  0;           // Speed value from the Potentiometer
-static uint16_t myfreq=800;              // current side tone frequency
+static uint16_t myfreq=800;             // current side tone frequency
+
+
 static uint8_t prosign=0;               // set if we are in the middle of a prosign
 static uint8_t num_elements=0;          // number of elements sent in a sequence
 
@@ -422,9 +457,9 @@ static uint8_t num_elements=0;          // number of elements sent in a sequence
 #define BUFMARGIN 85   // water mark for reporting "buffer almost full"
 
 static unsigned char character_buffer[BUFLEN];  // circular buffer
-static uint8_t bufrx=0;                             // output (read) pointer
-static uint8_t buftx=0;                             // input (write) pointer
-static uint8_t bufcnt=0;                            // number of characters in buffer
+static uint8_t bufrx=0;                         // output (read) pointer
+static uint8_t buftx=0;                         // input (write) pointer
+static uint8_t bufcnt=0;                        // number of characters in buffer
 //
 //////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -441,6 +476,9 @@ static uint8_t ReplayPointer=0; // This indicates a message is being sent
 static unsigned long wait;      // when "actual" reaches this value terminate current keyer state
 static unsigned long last;      // time of last enddot/enddash
 static unsigned long actual;    // time-stamp for this execution of loop()
+#ifdef POWERSAVE
+static unsigned long watchdog;  // used for going to sleep
+#endif
 
 //
 // variables updated in interrupt service routine
@@ -461,35 +499,11 @@ static uint8_t cw_stat=0;    // current CW output line status
 
 #ifdef CWKEYERSHIELD
 
-////////////////////////////////////////////////////////////////////////////////////////
 //
-// Some variables are needed, set them to -1 if not defined
+// Create an instance of the KeyerShield class.
+// Implement some "callback" functions by which the KeyerShield classs
+// can change keyer settings.
 //
-////////////////////////////////////////////////////////////////////////////////////////
-
-#ifndef SHIELD_ANALOG_SIDETONEVOLUME
-#define SHIELD_ANALOG_SIDETONEVOLUME   -1
-#endif
-#ifndef SHIELD_ANALOG_SIDETONEFREQ
-#define SHIELD_ANALOG_SIDETONEFREQ     -1
-#endif
-#ifndef SHIELD_ANALOG_MASTERVOLUME
-#define SHIELD_ANALOG_MASTERVOLUME     -1
-#endif
-#ifndef SHIELD_ANALOG_SPEED
-#define SHIELD_ANALOG_SPEED            -1
-#endif
-#ifndef SHIELD_DIGITAL_MICPTT
-#define SHIELD_DIGITAL_MICPTT          -1
-#endif
-#ifndef SHIELD_DIGITAL_PTTOUT
-#define SHIELD_DIGITAL_PTTOUT          -1
-#endif
-#ifndef SHIELD_DIGITAL_CWOUT
-#define SHIELD_DIGITAL_CWOUT           -1
-#endif
-
-
 void speed_set(int s) {
   //
   // Interface to let the TeensyUSBAudioMidi class
@@ -534,7 +548,6 @@ void keyer_hang_set(int h) {
   //       so we map all possible values of h onto these four
   //       possibilities
   //
-  Tail=0;                                    //  This is necessary to enable the "hang time"
   PinConfig &= 0x30;                         //  8 dot lengths hang time
   if (h >=  9  && h <10) PinConfig |= 0x10;  //  9 dot lengths hang time
   if (h >= 11  && h <13) PinConfig |= 0x20;  // 11 dot lengths hang time
@@ -549,9 +562,33 @@ CWKeyerShield cwshield(SHIELD_AUDIO_OUTPUT,
                        SHIELD_DIGITAL_MICPTT,
                        SHIELD_DIGITAL_PTTOUT,
                        SHIELD_DIGITAL_CWOUT);
+
 #endif
 
 void init_eeprom();
+
+#ifdef TEENSY4AUDIO
+//
+// Use this if you want to produce a nice side tone from a Teens4/AudioShield
+// combination without using USB audio. Basically, we have a free-running sine
+// oscillator that is routed to the I2S audio codec via a fader. Soft side tone
+// switching is implemented by fading in/out, that is
+//
+// Side tone on:                fade.fadeIn(delay);
+// Side tone off:               fade.fadeOut(delay);
+//
+// where the delay typically is in the range 4-8 msec.
+//
+#include "Audio.h"
+AudioSynthWaveformSine   sine;                          // sine oscillator
+AudioEffectFade          fade;                          // fader (amplitude control)
+AudioOutputI2S           i2s;                           // audio output
+AudioConnection          patchCord1(sine, fade);        // connect oscillator to fader
+AudioConnection          patchCord2(fade, 0, i2s, 0);   // connect fader to left output channel
+AudioConnection          patchCord3(fade, 0, i2s, 1);   // connect fader to right output channel
+AudioControlSGTL5000     sgtl5000;                      // controller for SGTL volume etc.
+#endif
+
 
 
 //////////////////////////////////////////////////////////////////////////////
@@ -565,15 +602,24 @@ void init_eeprom();
 
 void setup() {
 
-#ifdef HWSERIAL
-  Serial.begin(1200);  // baud rate has no meaning on 32U4 and Teensy systems
+#ifdef POWERSAVE
+//
+// Set watchdog to current time
+//
+   watchdog=millis();
+#endif
+//
+// Configure serial line if WinKey protocol is used
+//
+#ifdef MYSERIAL
+  MYSERIAL.begin(1200);  // baud rate has no meaning on 32U4 and Teensy systems
   highbaud=0;
 #endif
 
-#ifdef MOCOLUFA
-  Serial.begin(31250);
-#endif
-
+//
+// Configure digital input (StraightKey, PaddleLeft, PaddleRight) and
+// digital output (CW1, CW2, PTT1, PTT2, TONEPIN) lines
+//
 #ifdef StraightKey
   pinMode(StraightKey, INPUT_PULLUP);
 #endif
@@ -582,25 +628,6 @@ void setup() {
   pinMode(PaddleLeft,  INPUT_PULLUP);
   pinMode(PaddleRight, INPUT_PULLUP);
 #endif
-
-#ifdef MSG1PIN
-  pinMode(MSG1PIN, INPUT_PULLUP);
-#endif  
-#ifdef MSG2PIN
-  pinMode(MSG2PIN, INPUT_PULLUP);
-#endif
-#ifdef MSG3PIN
-  pinMode(MSG3PIN, INPUT_PULLUP);
-#endif
-#ifdef MSG4PIN
-  pinMode(MSG4PIN, INPUT_PULLUP);
-#endif
-#ifdef MSG5PIN
-  pinMode(MSG5PIN, INPUT_PULLUP);
-#endif
-#ifdef MSG6PIN
-  pinMode(MSG6PIN, INPUT_PULLUP);
-#endif  
 
 #ifdef CW1
   // active-high CW output
@@ -620,11 +647,18 @@ void setup() {
   pinMode(PTT2, OUTPUT);
   digitalWrite(PTT2, HIGH);
 #endif
+#ifdef TONEPIN
+  pinMode(TONEPIN, OUTPUT);
+  digitalWrite(TONEPIN, LOW);
+#endif
 
   init_eeprom();
-  
+
 #ifdef CWKEYERSHIELD
 
+ //
+ // Initialize the KeyerShield  library, and set some defaults.
+ //
  cwshield.setup();
 
 #ifdef MY_MUTE_OPTION
@@ -642,10 +676,33 @@ void setup() {
 #ifdef MY_DEFAULT_FREQ
   cwshield.sidetonefrequency(MY_DEFAULT_FREQ/10);
 #endif
-#ifdef MY_DEFAULT_VOLUME
-  cwshield.sidetonevolume(MY_DEFAULT_VOLUME);
+#ifdef MY_DEFAULT_SIDETONE_VOLUME
+  cwshield.sidetonevolume(MY_DEFAULT_SIDETONE_VOLUME);
 #endif
+#ifdef MY_DEFAULT_MASTER_VOLUME
+  cwshield.mastervolume(MY_DEFAULT_MASTER_VOLUME);  // 0..127
 #endif
+
+#endif  // CWKEYERSHIELD
+
+
+#ifdef TEENSY4AUDIO
+//
+// Init audio subsystem and set default parameters
+//
+AudioMemory(16);
+AudioNoInterrupts();
+
+sine.frequency(myfreq);  // Initial setting (has no effect)
+sine.amplitude(0.5);
+sgtl5000.enable();       // Enable I2S output
+sgtl5000.volume(0.55);   // SGTL master volume. Adjust to your hardware
+fade.fadeOut(5);         // Switch off tone after boot-up
+AudioInterrupts();
+
+
+#endif  // TEENSY4AUDIO
+
 }
 
 //////////////////////////////////////////////////////////////////////////////
@@ -742,11 +799,88 @@ void init_eeprom() {
   }
 }
 
+//////////////////////////////////////////////////////////////////////////////
+//
+// Some utility functions when using MIDI
+//
+//////////////////////////////////////////////////////////////////////////////
+#ifdef USBMIDI
+//
+// This works for USBMIDI (Teensy)
+//
+void SendOnOff(int chan, int note, int state) {
+  if (chan < 0 || note < 0) return;
+  chan = chan & 0x0F;
+  if (state) {
+    usbMIDI.sendNoteOn(note, 127, chan);
+  } else {
+    usbMIDI.sendNoteOn(note,   0, chan);
+  }    
+  usbMIDI.send_now();
+}
 
+void SendControlChange(int chan, int control, int val) {
+  midiEventPacket_t event;
+  if (chan < 0 || control < 0) return;
+  usbMIDI.sendControlChange(control, val, chan);
+  usbMIDI.send_now();
+}
+#else
+#ifdef MIDIUSB
+//
+// This works for MIDIUSB (Leonardo)
+//
+#include "MIDIUSB.h"
+
+void SendOnOff(int chan, int note, int state) {
+  midiEventPacket_t event;
+  if (chan < 0 || note < 0) return;
+  chan = chan & 0x0F;
+  if (state) {
+    // Note On
+    event.header = 0x09;
+    event.byte1  = 0x90 | chan;
+    event.byte2  = note;
+    event.byte3  = 127;
+  } else {
+    // NoteOff, but we use NoteOn with velocity=0
+    event.header = 0x09;
+    event.byte1  = 0x90 | chan;
+    event.byte2  = note;
+    event.byte3  = 0;
+  }
+  MidiUSB.sendMIDI(event);
+  // this is CW, so flush each single event
+  MidiUSB.flush();
+}
+
+void SendControlChange(int chan, int control, int val) {
+  midiEventPacket_t event;
+  if (chan < 0 || control < 0) return;
+  chan = chan & 0x0F;
+  event.header = 0x09;
+  event.byte1  = 0xB0 | chan;
+  event.byte2  = control & 0x7F;
+  event.byte3  = control & 0x7F;
+  MidiUSB.sendMIDI(event);
+  // this is CW, so flush each single event
+  MidiUSB.flush();
+}
+#else
+//
+// Dummy functions if there is no MIDI
+//
+void SendOnOff(int chan, int note, int state) {
+}
+void SendControlChange(int chan, int control, int val) {
+}
+#endif
+#endif
 //////////////////////////////////////////////////////////////////////////////
 //
 // MIDI might require to drain or process incoming MIDI messages, so this
-// one is periodically called.
+// one is periodically called. If neither using the KeyerShield library, nor
+// using MIDI, then this is a no-op.
 //
 //////////////////////////////////////////////////////////////////////////////
 
@@ -754,28 +888,30 @@ void DrainMIDI() {
 #ifdef CWKEYERSHIELD
     cwshield.loop();
 #endif
+#ifdef MIDIUSB
+    midiEventPacket_t rx;
+    do {
+      rx = MidiUSB.read();
+    } while (rx.header != 0);
+#endif    
 #ifdef USBMIDI
     if (usbMIDI.read()) {
       // nothing to be done
-    }
-#endif
-#ifdef MOCOLUFA
-    if (Serial.available()) {
-      Serial.read();
     }
 #endif
 }
 
 //////////////////////////////////////////////////////////////////////////////
 //
-// Read one byte from host
+// Read one byte from host.
+// If not using the serial line, this always returns 0.
 //
 //////////////////////////////////////////////////////////////////////////////
 
 int FromHost() {
   int c=0;
-#ifdef HWSERIAL
-  c=Serial.read();
+#ifdef MYSERIAL
+  c=MYSERIAL.read();
 #endif
 
   return c;
@@ -784,25 +920,27 @@ int FromHost() {
 //////////////////////////////////////////////////////////////////////////////
 //
 // Write one byte to the host
+// If not using the serial line, this is a no-op.
 //
 //////////////////////////////////////////////////////////////////////////////
 
 void ToHost(int c) {
-#ifdef HWSERIAL
-  Serial.write(c);
+#ifdef MYSERIAL
+  MYSERIAL.write(c);
 #endif
 }
 
 //////////////////////////////////////////////////////////////////////////////
 //
 // Check if there is a byte from host
+// If not using the serial line, this always returns 0.
 //
 //////////////////////////////////////////////////////////////////////////////
 
 int ByteAvailable() {
   int rc=0;
-#ifdef HWSERIAL
-  rc=Serial.available();
+#ifdef MYSERIAL
+  rc=MYSERIAL.available();
 #endif
   return rc;
 }
@@ -819,10 +957,8 @@ void keydown() {
   //
   // Actions: side tone on (if enabled), set hardware line(s), send MIDI  message
   //
-#ifdef TONEPIN                                          // square wave (if enabled)
-  if (SIDETONE_ENABLED) {
-    tone(TONEPIN, myfreq);
-  }
+#ifdef TONEPIN
+  tone(TONEPIN, myfreq);
 #endif
 
 #ifdef CW1                                              // active-high CW output
@@ -833,19 +969,13 @@ void keydown() {
   digitalWrite(CW2,LOW);
 #endif
 
-#if defined(USBMIDI)  && defined(MY_KEYDOWN_NOTE) && defined(MY_MIDI_CHANNEL)
-  usbMIDI.sendNoteOn(MY_KEYDOWN_NOTE, 127, MY_MIDI_CHANNEL);
-  usbMIDI.send_now();
-#endif
-
-#if defined(MOCOLUFA) && defined(MY_KEYDOWN_NOTE) && defined(MY_MIDI_CHANNEL)
-  Serial.write(0x90 | (MY_MIDI_CHANNEL-1) & 0x0F));
-  Serial.write(MY_KEYDOWN_NOTE);
-  Serial.write(127);
-#endif
+  SendOnOff(MY_MIDI_CHANNEL, MY_KEYDOWN_NOTE, 1);
 
 #ifdef CWKEYERSHIELD                               // MIDI and sidetone
  cwshield.key(1);
+#endif
+#ifdef TEENSY4AUDIO
+  if (SIDETONE_ENABLED) fade.fadeIn(5);
 #endif
 }
 
@@ -861,7 +991,8 @@ void keyup() {
   //
   // Actions: side tone off, drop hardware line, send MIDI NoteOff message
   //
-#ifdef TONEPIN                                          // square wave line
+
+#ifdef TONEPIN
   noTone(TONEPIN);
 #endif
 
@@ -873,19 +1004,13 @@ void keyup() {
   digitalWrite(CW2,HIGH);                               // active-low CW output
 #endif
 
-#if defined(USBMIDI) && defined(MY_KEYDOWN_NOTE) && defined(MY_MIDI_CHANNEL)
-  usbMIDI.sendNoteOn(MY_KEYDOWN_NOTE, 0, MY_MIDI_CHANNEL);
-  usbMIDI.send_now();
-#endif
-
-#if defined(MOCOLUFA) && defined(MY_KEYDOWN_NOTE) && defined(MY_MIDI_CHANNEL)
-  Serial.write(0x90 | (MY_MIDI_CHANNEL-1) & 0x0F));
-  Serial.write(MY_KEYDOWN_NOTE);
-  Serial.write(0);
-#endif
+  SendOnOff(MY_MIDI_CHANNEL, MY_KEYDOWN_NOTE, 0);
 
 #ifdef CWKEYERSHIELD                               // MIDI and side tone
  cwshield.key(0);
+#endif
+#ifdef TEENSY4AUDIO
+  fade.fadeOut(5);
 #endif
 }
 
@@ -909,15 +1034,8 @@ void ptt_on() {
   digitalWrite(PTT2,LOW);
 #endif
 
-#if defined(USBMIDI) && defined(MY_PTT_NOTE) && defined(MY_MIDI_CHANNEL)
-  usbMIDI.sendNoteOn(MY_PTT_NOTE, 127, MY_MIDI_CHANNEL);
-#endif
-
-#if defined(MOCOLUFA) && defined(MY_PTT_NOTE) && defined(MY_MIDI_CHANNEL)
-  Serial.write(0x90 | (MY_MIDI_CHANNEL-1) & 0x0F));
-  Serial.write(MY_PTT_NOTE);
-  Serial.write(127);
-#endif
+  
+  SendOnOff(MY_MIDI_CHANNEL, MY_PTT_NOTE, 1);
 
 #ifdef CWKEYERSHIELD
   cwshield.cwptt(1);
@@ -944,16 +1062,8 @@ void ptt_off() {
   digitalWrite(PTT2,HIGH);                                // active low PTT line
 #endif
 
-#if defined(USBMIDI) && defined(MY_PTT_NOTE) && defined(MY_MIDI_CHANNEL)
-  usbMIDI.sendNoteOn(MY_PTT_NOTE, 0, MY_MIDI_CHANNEL);
-#endif
-
-#if defined(MOCOLUFA) && defined(MY_PTT_NOTE) && defined(MY_MIDI_CHANNEL)
-  Serial.write(0x90 | (MY_MIDI_CHANNEL-1) & 0x0F));
-  Serial.write(MY_CWPTT_NOTE);
-  Serial.write(0);
-#endif
-
+  SendOnOff(MY_MIDI_CHANNEL, MY_PTT_NOTE, 1);
+  
 #ifdef CWKEYERSHIELD
   cwshield.cwptt(0);
 #endif
@@ -1115,10 +1225,10 @@ unsigned char morse[58] = {
 uint8_t ASCII_to_Morse(int c) {
   //
   // Convert Ascii character to dit/dah pattern
-  //  
+  //
   if (c >= 'a' && c <= 'z') c -= 32;
   if (c >= 33 && c <= 90) {
-    return morse[c-33];  
+    return morse[c-33];
   } else {
     return 1;
   }
@@ -1175,6 +1285,14 @@ void keyer_state_machine() {
   } else {
     myspeed=HostSpeed;
   }
+
+  static int old_myspeed=0;
+    
+  if (myspeed != old_myspeed) {
+    old_myspeed=myspeed;
+    SendControlChange(MY_MIDI_CHANNEL, MY_SPEED_CTL, myspeed);
+  }
+
 
   //
   // If sending from the buffer, possibly use "buffered speed"
@@ -1251,25 +1369,26 @@ void keyer_state_machine() {
         collpos=0;
       }
       //
-      // if there is a long pause, send one space (no matter how long the pause is)
+      // anything between one inter-word pause and "infinity pause" produces exactly one space
+      // in the serial echo
       //
       if (collpos == 0 && sentspace == 0 && actual > last + 6*dotlen) {
          if (PADDLE_ECHO && hostmode) ToHost(32);
          sentspace=1;
       }
       //
-      // The dash, dot and straight key contact may be closed at
-      // the same time. Priority here is straight > dot > dash
+      // At this point, process events in the order
+      // straight > dot paddle > dash padddle > replay > send from buffer
       //
-      if (eff_kdash) {
-        wait=actual;
+      if (straight) {
         sentspace=0;
-        keyer_state=STARTDASH;
-        collecting |= (1 << collpos++);
+        keyer_state=STARTSTRAIGHT;
+        wait=actual;
         if (!ptt_stat && PTT_ENABLED) {
           ptt_on();
           wait=actual+LeadIn*10;
         }
+        break;
       }
 
       if (eff_kdot) {
@@ -1281,16 +1400,146 @@ void keyer_state_machine() {
           ptt_on();
           wait=actual+LeadIn*10;
         }
+        break;
       }
 
-      if (straight) {
-        sentspace=0;
-        keyer_state=STARTSTRAIGHT;
+      if (eff_kdash) {
         wait=actual;
+        sentspace=0;
+        keyer_state=STARTDASH;
+        collecting |= (1 << collpos++);
         if (!ptt_stat && PTT_ENABLED) {
           ptt_on();
           wait=actual+LeadIn*10;
         }
+        break;
+      }
+
+      if (ReplayPointer !=0) {
+        pausing=0;
+        clearbuf();
+        sending = EEPROM.read(ReplayPointer++);
+        if (sending & 0x80) {
+          sending &= 0x7F;
+          ReplayPointer=0;
+        }
+        //
+        // The special "pattern" 0x1c is used to define a space.
+        // When encountering a space and PTT is not set, activate PTT
+        // but disregard lead-ins, since we are waiting for 4 dot-lengths
+        // anyway.
+        //
+        if (sending == 0x1c) {
+          sending=0x01;
+          wait=actual+wlen;
+          if (!ptt_stat && PTT_ENABLED) {
+            ptt_on();
+          }
+          keyer_state=SNDCHAR_DELAY;
+        } else {
+          wait=actual;  // no lead-in wait by default
+          if (!ptt_stat && PTT_ENABLED) {
+            ptt_on();
+            wait=actual+LeadIn*10;
+          }
+          keyer_state=SNDCHAR_PTT;
+        }
+        break;
+      }
+
+      //
+      // If keyer is idle and buffered characters available, transfer next one to "sending"
+      // Rely on the "completeness" of buffered commands
+      // Note that when a character has been received such that we stay in the "CHECK" state,
+      // wait must be set to actual+dotlen so we do not loose PTT while waiting for the next
+      // character. This is important for programs that wait for the "serial echo" of any
+      // character before sending the next one.
+      //
+      if (bufcnt > 0 && !pausing) {
+        //
+        // transfer next character to "sending"
+        //
+        byte=FromBuffer();
+        if (byte >=32 && byte <=127 && SERIAL_ECHO) {
+          ToHost(byte);
+          wait=actual+dotlen; // host may wait for the byte before sending the next one
+        }
+        switch (byte) {
+          case PROSIGN:
+            prosign=1;
+            break;
+          case BUFNOP:
+            break;
+          case KEYBUF:        // ignored
+          case WAIT:          // ignored
+          case SETPTT:        // ignored
+          case HSCWSPD:       // ignored
+            byte=FromBuffer();
+            break;
+          case CANCELSPD:
+            BufSpeed=0;
+            break;
+          case BUFSPD:
+            byte=FromBuffer();
+            BufSpeed=byte;
+            if (BufSpeed < 5)  BufSpeed=5;
+            if (BufSpeed > 99) BufSpeed=99;
+            break;
+          case 32:  // space
+            sending=1;
+            wait=actual + wlen;
+            keyer_state=SNDCHAR_DELAY;
+            break;
+          //
+          // PROTOCOL EXTENSION: Special treatment of "[", "$", and "]"
+          // used for contest logging programs that are not aware of
+          // the "buffered speed" facility. Typical CQ call is
+          // CQ DL1YCF [TEST]
+          // and a typical sent-exchange is
+          // [5nn$tt1] or [5nn] $tt1]
+          //
+          // That is, "TEST" and "5nn" are sent at higher speed (40 wpm),
+          // while the sent-exchange number is sent at lower speed (20 wpm),
+          // assuming that the standard contest operating speed is between 24 and
+          // 30 wpm.
+          //
+          case '[': // set buffered speed to "high"
+            BufSpeed=40;
+            break;
+          case '$': // set buffered speed to "slow"
+            BufSpeed=20;
+            break;
+          case ']': // cancel BUFSPD
+            BufSpeed=0;
+            break;
+          case '{':
+          case '}':
+          case '^':
+          case '_':
+          case '\\':
+          case '`':
+          case '~':
+          case 0x7f:
+            break;
+          case '|':  // thin space (a fulldotlen)
+            // Note that the K1EL chip does half a dotlen but this is rather small
+            sending=1;
+            wait=actual + dotlen;
+            keyer_state=SNDCHAR_DELAY;
+            break;
+          default:
+            sending=ASCII_to_Morse(byte);
+            if (sending != 1) {
+              wait=actual;  // no lead-in wait by default
+              if (!ptt_stat && PTT_ENABLED) {
+                ptt_on();
+                wait=actual+LeadIn*10;
+              }
+              keyer_state=SNDCHAR_PTT;
+            }
+            break;
+        }
+        break;
       }
       break;
     case STARTDOT:
@@ -1399,7 +1648,7 @@ void keyer_state_machine() {
       break;
     case SNDCHAR_PTT:
       // wait = end of PTT lead-in wait
-      if (actual > wait) {
+      if (actual >= wait) {
         keyer_state=SNDCHAR_ELE;
         keydown();
         wait=actual + ((sending & 0x01) ? dashlen : dotlen);
@@ -1424,12 +1673,26 @@ void keyer_state_machine() {
         if (sending == 1) {
           keyer_state=CHECK;
           //
-          // Note that the tail-time *ADDS* to the three-dotlen inter-word pause
-          // already accounted for, so a non-zero PTT tail should not be necessary
-          // in most cases.
-          // "wait" will be over-written in due course if there are still characters in the
-          // buffer, of if characters arrive over the serial line in due course.
-          wait += 10*Tail;
+          // This is the ONLY PLACE where the "PTT Tail" time applies.
+          // Note that the PTT Tail time *adds* to the three-dots
+          // inter-word spacing, so it is not used normally.
+          //
+          // However we cannot use zero "tail time" here, since this
+          // would lead to removing PTT *immediately* once entering
+          // the CHECK state. Therefore we require a minimum
+          // delay of 10 msec towards next removal of PTT, to give the
+          // keyer state machine a change to send the next character from
+          // the buffer (if there is one). This implies
+          // that PTT is removed, at the earliest, (3*dotlen + 10 msec)
+          // after the last key-up event. The "extra" 10 msec are
+          // barely noticeable, given that 3*dotlen is larger than 100 msec
+          // for CW speeds less than 36 wpm.
+          //
+          if (Tail > 0) {
+            wait += 10*Tail;
+          } else {
+            wait += 10;
+          }
         } else {
           keydown();
           keyer_state=SNDCHAR_ELE;
@@ -1438,134 +1701,6 @@ void keyer_state_machine() {
         }
       }
       break;
-  }
-
-  //
-  // If keyer is idle and a EEPROM message is to be sent, clear the buffer
-  // and send message. Make a push-button cancel a PAUSE condition.
-  //
-  if (ReplayPointer !=0 && keyer_state == CHECK) {
-    pausing=0;
-    clearbuf();
-    sending = EEPROM.read(ReplayPointer++);
-    if (sending & 0x80) {
-      sending &= 0x7F;
-      ReplayPointer=0;
-    }
-    //
-    // The special "pattern" 0x1c is used to define a space.
-    // When encountering a space and PTT is not set, activate PTT
-    // but disregard lead-ins, since we are waiting for 4 dot-lengths
-    // anyway.
-    //
-    if (sending == 0x1c) {
-      sending=0x01;
-      wait=actual+wlen;
-      if (!ptt_stat && PTT_ENABLED) {
-        ptt_on();
-      }
-      keyer_state=SNDCHAR_DELAY;
-    } else {
-      wait=actual;  // no lead-in wait by default
-      if (!ptt_stat && PTT_ENABLED) {
-        ptt_on();
-        wait=actual+LeadIn*10;
-      }
-      keyer_state=SNDCHAR_PTT;
-    }  
-  }
-
-  //
-  // If keyer is idle and buffered characters available, transfer next one to "sending"
-  // Rely on the "completeness" of buffered commands
-  // Note that when a character has been received such that we stay in the "CHECK" state,
-  // wait must be set to actual+dotlen so we do not loose PTT while waiting for the next
-  // character. This is important for programs that wait for the "serial echo" of any
-  // character before sending the next one.
-  //
-  if (bufcnt > 0 && keyer_state==CHECK && !pausing) {
-    //
-    // transfer next character to "sending"
-    //
-    byte=FromBuffer();   
-    if (byte >=32 && byte <=127 && SERIAL_ECHO) {
-      ToHost(byte);
-      wait=actual+dotlen; // host may wait for the byte before sending the next one
-    }
-    switch (byte) {
-      case PROSIGN:
-        prosign=1;
-        break;
-      case BUFNOP:
-        break;
-      case KEYBUF:        // ignored
-      case WAIT:          // ignored
-      case SETPTT:        // ignored
-      case HSCWSPD:       // ignored
-        byte=FromBuffer();
-        break;
-      case CANCELSPD:
-        BufSpeed=0;
-        break;
-      case BUFSPD:
-        byte=FromBuffer();
-        BufSpeed=byte;
-        if (BufSpeed > 99) BufSpeed=99;
-        break;
-      case 32:  // space
-        sending=1;
-        wait=actual + wlen;
-        keyer_state=SNDCHAR_DELAY;
-        break;
-      //
-      // PROTOCOL EXTENSION: Special treatment of "[", "$", and "]"
-      // used for contest logging programs that are not aware of
-      // the "buffered speed" facility. Typical CQ call is
-      // CQ DL1YCF [TEST]
-      // and a typical sent-exchange is
-      // [5nn$tt1] or [5nn] $tt1]
-      //
-      // That is, "TEST" and "5nn" are sent at higher speed (40 wpm),
-      // while the sent-exchange number is sent at lower speed (20 wpm),
-      // assuming that the standard contest operating speed is between 24 and
-      // 30 wpm.
-      //
-      case '[': // set buffered speed to "high"
-        BufSpeed=40;
-        break;
-      case '$': // set buffered speed to "slow"
-        BufSpeed=20;
-        break;
-      case ']': // cancel BUFSPD
-         BufSpeed=0;
-         break;
-      case '{':
-      case '}':
-      case '^':
-      case '_':
-      case '\\':
-      case '`':
-      case '~':
-      case 0x7f:
-          break;
-      case '|':  // thin space (a fulldotlen)
-                 // Note that the K1EL chip does half a dotlen but this is rather small
-         sending=1;
-         wait=actual + dotlen;
-         keyer_state=SNDCHAR_DELAY;
-         break;
-      default:
-        sending=ASCII_to_Morse(byte);
-        if (sending != 1) {
-          wait=actual;  // no lead-in wait by default
-          if (!ptt_stat && PTT_ENABLED) {
-            ptt_on();
-            wait=actual+LeadIn*10;
-          }
-          keyer_state=SNDCHAR_PTT;
-        }
-        break;
-    }
   }
 }
 
@@ -1668,8 +1803,8 @@ void WinKey_state_machine() {
   }
   //
   // Check serial line, if in hostmode or ADMIN command enter "WinKey" state machine
-  // (Note ADMIN commands should only be sent if hostmode is closed, with the exception
-  // of the CLOSE command).
+  // Note: ADMIN commands should only be sent if hostmode is closed, with the exception
+  //       of the CLOSE command. However we allow to use *all* admin commands at all times.
   //
   if (ByteAvailable()) {
     byte=FromHost();
@@ -1693,71 +1828,90 @@ void WinKey_state_machine() {
         }
         break;
       case SWALLOW:
-        winkey_state=FREE;
+        // "swallow" a number of bytes given in "inum"
+        if (inum-- == 0) winkey_state=FREE;
         break;
       case XECHO:
         ToHost(byte);
         winkey_state=FREE;
         break;
       case MESSAGE:
-        // output stored message as CW
+        if (byte >= 1 && byte <= 6) ReplayPointer=EEPROM.read(17+byte);
         winkey_state=FREE;
         break;
       case ADMIN:
         switch (byte) {
-          case ADMIN_CALIBRATE:
-            winkey_state=SWALLOW;  // expect a byte 0xFF
+          case ADMIN_CALIBRATE: // swallow one byte, nothing returned
+            inum=1;
+            winkey_state=SWALLOW;
             break;
-          case ADMIN_RESET:
+          case ADMIN_RESET: // nothing returned
             //
             // After doing AdminReset, the client must wait a small time
             // before sending "something", if the baud rate is changed here
             //
             if (highbaud) {
-#ifdef HWSERIAL
-              Serial.end();
-              Serial.begin(1200);
-#endif              
-            }  
+#ifdef MYSERIAL
+              MYSERIAL.end();
+              MYSERIAL.begin(1200);
+#endif
+            }
             read_from_eeprom();
             hostmode=0;
             HostSpeed=0;
             clearbuf();
             winkey_state=FREE;
             break;
-          case ADMIN_OPEN:
+          case ADMIN_OPEN: // return serial major number
             hostmode = 1;
             clearbuf();
             ToHost(WKVERSION);
             winkey_state=FREE;
             break;
-          case ADMIN_CLOSE:
+          case ADMIN_CLOSE: // nothing returned
             //
             // Cannot reset baud rate, since some clients will
             // very quickly send "something" after the admin close
             //
-            hostmode = 0;
             HostSpeed = 0;
             clearbuf();
             // restore "standalone" settings from EEPROM
             read_from_eeprom();
             winkey_state=FREE;
             break;
-          case ADMIN_ECHO:
+          case ADMIN_ECHO: // expect one byte that is echoed
             winkey_state=XECHO;
             break;
-          case ADMIN_PAD_A2D:     // Admin Paddle A2D, historical command
-          case ADMIN_SPD_A2D:     // Admin Speed  A2D, historical command
-          case ADMIN_CMD8:        // K1EL debug only
-          case ADMIN_GETCAL:      // Get Cal, historical command
-            // For backwards compatibility return a zero
+          case ADMIN_PAD_A2D:     // Admin Paddle A2D, historical command, return 0
             ToHost(0);
+            winkey_state=FREE;
+            break;
+          case ADMIN_SPD_A2D:     // Admin Speed  A2D, historical command
+            ToHost(WKVERSION);    // contrary to the manual, my WK2.1 chip returns "21"
+            winkey_state=FREE;
+            break;
+          case ADMIN_DEBUG:        // K1EL debug only.
+            //My WK 2.1 chip returns 24 bytes:
+            for (int i=0; i<24; i++) {
+              switch(i) {
+                case  2:  ToHost(0x49); break;
+                case  7:  ToHost(0x4d); break;  // sometimes 0x45 is returned here.
+                case 17:  ToHost(0x4f); break;
+                default:  ToHost(0x41); break;
+              }
+            }
+            winkey_state=FREE;
+            break;
+          case ADMIN_GETMAJOR:      // Return K1EL version, major number
+            ToHost(WKVERSION);
             winkey_state=FREE;
             break;
           case ADMIN_GETVAL:
             // never used so I refrain from making an own "state" for this.
             // we need no delays since the buffer should be able to hold 15
             // bytes.
+            // NOTE: my WK2.1 chip does not return anything, while the WK3.1 manual
+            //       says "return zero"
             ToHost(ModeRegister);
             ToHost(HostSpeed);
             ToHost(Sidetone);
@@ -1790,51 +1944,67 @@ void WinKey_state_machine() {
           case ADMIN_SENDMSG:
             winkey_state=MESSAGE;
             break;
-          case ADMIN_LOADXMODE:
+          case ADMIN_LOADX1:
+            inum=1;
             winkey_state=SWALLOW;  // not (yet) implemented, letter spacing etc.
             break;
-          case ADMIN_CMD16: // Admin Reserved (return a zero!)
+          case ADMIN_FWUPDT: // Admin Reserved (return a zero!)
             ToHost(0);
-            winkey_state=FREE;
-            break;
-          case ADMIN_HIGHBAUD: // Admin Set High Baud
-            if (!highbaud) {
-#ifdef HWSERIAL              
-              Serial.end();
-              Serial.begin(9600);
-#endif              
-              highbaud=1;
-            }  
             winkey_state=FREE;
             break;
           case ADMIN_LOWBAUD: // Admin Set Low Baud
             if (highbaud) {
-#ifdef HWSERIAL              
-              Serial.end();
-              Serial.begin(1200);
-#endif              
+#ifdef MYSERIAL
+              MYSERIAL.end();
+              MYSERIAL.begin(1200);
+#endif
               highbaud=0;
-            }  
+            }
             break;
-          case ADMIN_CMD19: // Admin reserved
-          case ADMIN_CMD20: // Admin reserved
+          case ADMIN_HIGHBAUD: // Admin Set High Baud
+            if (!highbaud) {
+#ifdef MYSERIAL
+              MYSERIAL.end();
+              MYSERIAL.begin(9600);
+#endif
+              highbaud=1;
+            }
+            winkey_state=FREE;
+            break;            
+          case ADMIN_RTTY:  // expect 2 bytes with RTTY parameters, WK3 only.
+            inum=2;
+            winkey_state=SWALLOW;
+            break;
+          case ADMIN_SETWK3: // Set WK3 mode (WK3 only)
              winkey_state=FREE;
              break;
-          default: // Should not occur.
+          case ADMIN_VCC: // Read VCC (WK3 only)
+             ToHost(52);  // Fake 5.0 Volts
+             winkey_state=FREE;
+             break;
+          case ADMIN_LOADX2:  // set extension register 2, WK3 only
+             inum=1;
+             winkey_state=SWALLOW;
+             break;
+          case ADMIN_GETMINOR:  // Get minor version number, WK3 only
+             ToHost(0);  // We fake a 23.00 Version
+             winkey_state=FREE;
+             break;
+          case ADMIN_GETTYPE: // Get IC type, WK3 only
+             ToHost(0);  // Fake a DIP
+             winkey_state=FREE;
+             break;
+          case ADMIN_VOLUME: // Sidetone volume (WK3 only), ignored
+            inum=1;
+            winkey_state=SWALLOW;
+            break;            
+          default: // Should not occur. Do not return anything.
              winkey_state=FREE;
              break;
         }
         break;
       case SIDETONE:
         Sidetone=byte;
-        myfreq=4000/(Sidetone & 0x0F);
-#ifdef CWKEYERSHIELD
-        if (myfreq <= 1270) {
-          cwshield.sidetonefrequency((myfreq+5)/10);
-        } else {
-          cwshield.sidetonefrequency(127);
-        }
-#endif
         winkey_state=FREE;
         break;
       case WKSPEED:
@@ -1854,12 +2024,13 @@ void WinKey_state_machine() {
         winkey_state=FREE;
         break;
       case PTT:
-        if (inum == 0) {
-          LeadIn=byte;
-          inum=1;
-        } else {
-          Tail=byte;
-          winkey_state=FREE;
+        switch (inum++) {
+          case 0:
+            LeadIn=byte;
+            break;
+          case 1:
+            Tail=byte;
+            winkey_state=FREE;  
         }
         break;
       case POTSET:
@@ -1872,6 +2043,7 @@ void WinKey_state_machine() {
             if (WPMrange > 31) WPMrange=31;
             break;
           case 2:
+            // byte part of the protocol but ignored
             winkey_state=FREE;
             break;
         }
@@ -1897,7 +2069,7 @@ void WinKey_state_machine() {
         } else {
           keyup();
           if (PTT_ENABLED) {
-            delay(50);
+            delay(100);
           }
           ptt_off();
           tuning=0;
@@ -1930,21 +2102,13 @@ void WinKey_state_machine() {
           case  1:
             HostSpeed=byte;
 #ifdef CWKEYERSHIELD
-            if (HostSpeed != 0) {
-              cwshield.cwspeed(HostSpeed);
-            }
+        if (HostSpeed != 0) {
+          cwshield.cwspeed(HostSpeed);
+        }
 #endif
             break;
           case  2:
             Sidetone=byte;
-            myfreq=4000/(Sidetone & 0x0F);
-#ifdef CWKEYERSHIELD
-            if (myfreq <= 1270) {
-              cwshield.sidetonefrequency((myfreq+5)/10);
-            } else {
-              cwshield.sidetonefrequency(127);
-            }
-#endif
             break;
           case  3:
             Weight=byte;
@@ -2045,14 +2209,15 @@ void WinKey_state_machine() {
         winkey_state=FREE;
         break;
       case PROSIGN:
-        if (inum == 0) {
-          ps1=byte;
-          inum=1;
-        } else {
-         // character_buffer prosign command
-         queue(3,PROSIGN,ps1,byte);
-         winkey_state=FREE;
-        }
+        switch (inum++) {
+          case 0:
+            ps1=byte;
+            break;
+          case 1:
+            // character_buffer prosign command
+           queue(3,PROSIGN,ps1,byte);
+           winkey_state=FREE;
+        }  
         break;
       case BUFSPD:
         queue(2,BUFSPD,byte,0);
@@ -2093,22 +2258,71 @@ void WinKey_state_machine() {
 
 }
 
-//////////////////////////////////////////////////////////////////////////////
+#ifdef POWERSAVE
 //
-// function to debounce an analog input
+// currently, only for AVR architecture
 //
-//////////////////////////////////////////////////////////////////////////////
-void analogDebounce(unsigned long actual, int pin, unsigned long *debounce, int *value) {
-  int i;
+#include <avr/sleep.h>
+#include <avr/wdt.h>
 
-  if (actual < *debounce) return;
-  *debounce=actual+20;
-
-  i=analogRead(pin); // 0 - 1023
-  *value += (i - *value/16) ;  // output value in the range 0 - 16368
+ISR (WDT_vect)
+{
+  wdt_disable();
+  sleep_disable();
+  interrupts();
 }
 
-
+void goto_sleep() {
+    //
+    // Most uCs only have a limited number of I/O lines that can
+    // be used for interrupts, so we do it the "pedestrian way"
+    // here, and use the hardware watchdog timer to wake up every
+    // second for a short while, just to check the input lines.
+    // Note that some devices need to re-connect to the USB bus
+    // to be able to enter host mode. This is done with USBDevice.attach()
+    // on Leonardos but this does not exist for Teensy2.
+    //
+    set_sleep_mode(SLEEP_MODE_PWR_SAVE);
+#if defined(USBCON) && !defined(TEENSYDUINO)  
+    USBDevice.detach();  // This works on Leonardo but not on Teensy2
+#endif     
+#ifdef MYSERIAL
+    MYSERIAL.end();  // Serial.end() includes USB shutdown on Teensy2
+#endif
+    for (;;) {
+      //
+      // There is a library function wdt_enable() but this seems
+      // to do a reset rather than an interrupt after the time-out
+      // so here is the "pedestrian" way to activate the hardware
+      // watch-dog timer
+      //
+      cli();
+      MCUSR = 0;
+      WDTCSR |= B00011000;
+      WDTCSR = B01000110;
+      sei();
+      sleep_enable();
+      sleep_cpu();
+      //
+      // After wake-up, check input lines. If they are not
+      // active just continue to sleep.
+      //
+#ifdef StraightKey
+      if (digitalRead(StraightKey) == 0) break;
+#endif
+#ifdef PaddleLeft
+      if (digitalRead(PaddleLeft) == 0) break;
+      if (digitalRead(PaddleRight) == 0) break;
+#endif
+    }
+#if defined(USBCON) && !defined(TEENSYDUINO)
+    USBDevice.attach();  // This works on Leonardo but not on Teensy2
+#endif
+#ifdef MYSERIAL
+    MYSERIAL.begin(1200); // This should re-initialize USB on Teensy2
+#endif
+}
+#endif
 
 //////////////////////////////////////////////////////////////////////////////
 //
@@ -2117,20 +2331,16 @@ void analogDebounce(unsigned long actual, int pin, unsigned long *debounce, int 
 //
 //////////////////////////////////////////////////////////////////////////////
 
+extern int usb_wait_rx_flag, usb_wait_tx_flag;
+
 void loop() {
   int i;
   static uint8_t LoopCounter=0;
-#ifdef POTPIN
-  static int SpeedPinValue=8000;           // default value: mid position
-  static unsigned long SpeedDebounce=0;    // used for "debouncing" speed pot
-#endif
   static unsigned long DotDebounce=0;      // used for "debouncing" dot paddle contact
   static unsigned long DashDebounce=0;     // used for "debouncing" dash paddle contact
   static unsigned long StraightDebounce=0; // used for "debouncing" straight key contact
-#ifdef CWKEYERSHIELD
   static uint8_t old_sidetone_enabled = 1;
-#endif
-
+  static uint8_t old_sidetone = 1;
 
   //////////////////////////////////////////////////////////////////////////////
   //
@@ -2139,8 +2349,36 @@ void loop() {
   //
   //////////////////////////////////////////////////////////////////////////////
 
+
   actual=millis();
 
+#ifdef POWERSAVE
+
+  //
+  // If we are in host mode, we are USB powered so no need to go to sleep
+  //
+  if (hostmode) watchdog=actual;
+  //
+  // look if more than 300 seconds passed since the last update of the watchdog
+  // timer and we are not in host mode. In this case, go to sleep. Take care of overflows.
+  //
+
+  unsigned long ul = watchdog + 300000UL;
+
+  if (((ul > watchdog) && ((actual >= watchdog) && (actual <= ul))) ||
+      ((ul < watchdog) && ((actual >= watchdog) || (actual <= ul)))) {
+    // ul > watchdog  and actual between watchdog and ul: do not go to sleep (no-overflow case)
+    // ul < watchdog and actual has not yet reached the region between ul and watchdog:
+    // do not go to sleep (overflow case)
+    // host connection open: do not go to sleep.
+  } else {
+    goto_sleep();
+    actual=millis();
+    watchdog=actual;
+  }
+#endif
+  //
+  //
   //////////////////////////////////////////////////////////////////////////////
   //
   // Read digital and analog input lines with debouncing.
@@ -2156,6 +2394,9 @@ void loop() {
   if (actual >= DotDebounce) {
     i=!digitalRead(PADDLE_SWAP ? PaddleRight : PaddleLeft);
     if (i != kdot) {
+#ifdef POWERSAVE
+      watchdog=actual;
+#endif
       DotDebounce=actual+10;
       kdot=i;
       if (kdot) {
@@ -2168,6 +2409,9 @@ void loop() {
   if (actual >= DashDebounce) {
     i=!digitalRead(PADDLE_SWAP ? PaddleLeft : PaddleRight);
     if (i != kdash) {
+#ifdef POWERSAVE
+      watchdog=actual;
+#endif
       DashDebounce=actual+10;
       kdash=i;
       if (kdash) {
@@ -2182,39 +2426,120 @@ void loop() {
   if (actual >= StraightDebounce) {
     i=!digitalRead(StraightKey);
     if (i != straight) {
+#ifdef POWERSAVE
+      watchdog=actual;
+#endif
       StraightDebounce=actual+10;
       straight=i;
     }
   }
 #endif
 
+#ifdef BUTTONPIN
 //
-// The message pins do not need debouncing.
-// Once a press event has been detected, the character
-// is sent completely before the ReplayPointer is again
-// looked at.
+// We have an analog input for reading out the push-buttons
+// We also need a definition of intervals which provide
+// a mapping from analog values to pushbutton states.
 //
-if (ReplayPointer == 0) {
-#ifdef MSG1PIN
-if (!digitalRead(MSG1PIN)) ReplayPointer=EEPROM.read(0x12);  
-#endif
-#ifdef MSG2PIN
-if (!digitalRead(MSG2PIN)) ReplayPointer=EEPROM.read(0x13);  
-#endif
-#ifdef MSG3PIN
-if (!digitalRead(MSG3PIN)) ReplayPointer=EEPROM.read(0x14);  
-#endif
-#ifdef MSG4PIN
-if (!digitalRead(MSG4PIN)) ReplayPointer=EEPROM.read(0x15);
-#endif
-#ifdef MSG5PIN
-if (!digitalRead(MSG5PIN)) ReplayPointer=EEPROM.read(0x16);
-#endif
-#ifdef MSG6PIN
-if (!digitalRead(MSG6PIN)) ReplayPointer=EEPROM.read(0x17);
-#endif
-}
+// Value from 0                    ...  BUTTON_BORDER_1   ==> Button1 pressed
+// Value from BUTTON_BORDER_1 + 1  ...  BUTTON_BORDER_2   ==> Button2 pressed
+// Value from BUTTON_BORDER_2 + 1  ...  BUTTON_BORDER_3   ==> Button3 pressed
+// Value from BUTTON_BORDER_3 + 1  ...  BUTTON_BORDER_4   ==> Button4 pressed
+// Value from BUTTON_BORDER_4 + 1  ...  BUTTON_BORDER_5   ==> Button5 pressed
+// Value from BUTTON_BORDER_5 + 1  ...  BUTTON_BORDER_6   ==> Button6 pressed
+// Value from BUTTON_BORDER_6 + 1  ...  4092              ==> no button pressed
+//
+// I have calculated defaults appropriate for
+// a network with one 10k resistor and three 1k ones (using 10k/1k seems to be
+// the quasi-standard), and an exponential averaging that produces
+// values between 0 and 4092.
+//
+#define BUTTON_BORDER_1   186
+#define BUTTON_BORDER_2   527
+#define BUTTON_BORDER_3   813
+#define BUTTON_BORDER_4  1057
+#define BUTTON_BORDER_5  1268
+#define BUTTON_BORDER_6  1450
+#define BUTTON_HIGH      2000
+//
+// Due to the exponential averaging of the analog values, the read-out will
+// slowly sweep from the max value downward upon key press.
+// When the value crosses BUTTON_HIGH,
+// we make 12 further averages to let it settle down.
+// Upon releasing the button it will sweep up again.
+//
+// Thus we have several different states:
+// BUTTON_PRE_STATE   is the idle state, the readout > BUTTON_HIGH
+// BUTTON_WAIT_STATE  is entered from BUTTON_PRE_STATE if the readout is below BUTTON_HIGH
+//                    for the first time. Then the averaging continues for 12 cycles, the
+//                    value is read and an action is taken
+// BUTTON_POST_STATE  is entered after a valid read-out has been made. From this,
+//                    BUTTON_PRE_STATE is reached if the read-out is above BUTTON_HIGH.
+//
+//
+// Since analog reads are expensive, we read every 10 msec if we are in pre  or post state, every 5 msec
+// in the wait state
 
+#define BUTTON_PRE_STATE 255
+#define BUTTON_WAIT_STATE 12
+#define BUTTON_POST_STATE 0
+static uint8_t button_state=BUTTON_PRE_STATE;
+static uint32_t    button_debounce=0;
+static uint16_t    button_val=4092;
+
+if (actual >= button_debounce) {
+  i=analogRead(BUTTONPIN);
+  // exponential averaging.
+  // button_val is between zero and 4*1023
+  // (1023 is max value returned by analogRead)
+  button_val += (i - button_val/4);
+  switch (button_state) {
+    case BUTTON_PRE_STATE:
+      if (button_val > BUTTON_HIGH) {
+        button_debounce=actual+10;
+      } else {
+        button_debounce=actual+5;
+        button_state=BUTTON_WAIT_STATE;
+#ifdef POWERSAVE
+      // pressing a  button resets the "deep sleep" timer
+      watchdog=actual;
+#endif
+      }
+      break;
+    case BUTTON_POST_STATE:
+      // remain in "post" state until the readout is above BUTTON_HIGH
+      button_debounce=actual+10;
+      if (button_val > BUTTON_HIGH) {
+        button_state=BUTTON_PRE_STATE;
+      }
+      break;
+    default:
+      // our state cycles from WAIT downto POST
+      if (--button_state == BUTTON_POST_STATE) {
+        button_debounce=actual+10;
+        // we can make a read-out and trigger an  action. Note that pushing
+        // a button while sending a message aborts that message and starts
+        // the new one.
+        if (button_val < BUTTON_BORDER_1) {
+            ReplayPointer = EEPROM.read(18);
+        } else if (button_val < BUTTON_BORDER_2) {
+            ReplayPointer = EEPROM.read(19);
+        } else if (button_val < BUTTON_BORDER_3) {
+            ReplayPointer = EEPROM.read(20);
+        } else if (button_val < BUTTON_BORDER_4) {
+            ReplayPointer= EEPROM.read(21);
+        } else if (button_val < BUTTON_BORDER_5) {
+            ReplayPointer= EEPROM.read(22);
+        } else if (button_val < BUTTON_BORDER_6) {
+            ReplayPointer= EEPROM.read(23);
+        }  else {
+            // Hardware spike, do nothing
+        }
+      }
+      break;
+  }
+}
+#endif
 
 #ifdef POTPIN
   //
@@ -2225,8 +2550,15 @@ if (!digitalRead(MSG6PIN)) ReplayPointer=EEPROM.read(0x17);
   // producing a long sequence of dots (or dahs) and then
   // we have to adjust the speed. This is detected by num_elements.
   //
-  if (keyer_state == CHECK || num_elements > 5) {
-    analogDebounce(actual, POTPIN, &SpeedDebounce, &SpeedPinValue);
+  // The speed pot is debounced with a relatively long time constant
+  //
+  static int SpeedPinValue=2000;           // default value: mid position
+  static unsigned long SpeedDebounce=0;    // used for "debouncing" speed pot
+
+  if ((keyer_state == CHECK || num_elements > 5) && (actual >= SpeedDebounce)) {
+    SpeedDebounce=actual + 20;
+    i = analogRead(POTPIN);
+    SpeedPinValue += (i - SpeedPinValue/4);  // Range 0 ... 4092
   }
 #endif
 
@@ -2277,7 +2609,6 @@ if (!digitalRead(MSG6PIN)) ReplayPointer=EEPROM.read(0x17);
       ptt_off();
       tuning=0;
   }
-
   /////////////////////////////////////////////////////////////////////////////////
   //
   // Distribute the remaining work across different executions of loop()
@@ -2289,8 +2620,12 @@ if (!digitalRead(MSG6PIN)) ReplayPointer=EEPROM.read(0x17);
        // Adjust CW speed
        //
 #ifdef POTPIN
-      // ATTN: no overflow!
-      SpeedPot=((SpeedPinValue >> 8)*WPMrange+32) >> 6; // between 0 and WPMrange
+      // ATTN: no 16-bit overflow, result between 0 and 31 (if WPMrange is at most 31)
+      // SpeedPinValue           is in the range 0 - 4092
+      // x = SpeedPinValue >> 6  is in the range 0 - 63
+      // x*WPMrange + 32         is in the range 0 - 1985
+      // final result            is in the range 0 - 31
+      SpeedPot=((SpeedPinValue >> 6)*WPMrange+32) >> 6;
       Speed=MinWPM+SpeedPot;
 #else
        //
@@ -2305,14 +2640,28 @@ if (!digitalRead(MSG6PIN)) ReplayPointer=EEPROM.read(0x17);
        break;
     case 2:
        //
-       // Report side tone enable etc. to upstream software
-       //
+       // Check if Side tone settings changed
+       //       
+       if (Sidetone != old_sidetone) {
+         myfreq=4000/(Sidetone & 0x0F);
+         old_sidetone = Sidetone;
+#ifdef TEENSY4AUDIO
+         sine.frequency(myfreq);
+#endif
 #ifdef CWKEYERSHIELD
+         if (myfreq <= 1270) {
+           cwshield.sidetonefrequency((myfreq+5)/10);
+         } else {
+           cwshield.sidetonefrequency(127);
+         }
+#endif
+       }
        if (old_sidetone_enabled != SIDETONE_ENABLED) {
           old_sidetone_enabled = SIDETONE_ENABLED;
+#ifdef CWKEYERSHIELD
           cwshield.sidetoneenable(old_sidetone_enabled);
-       }
 #endif
+       }
       break;
     case 4:
       //

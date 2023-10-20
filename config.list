@@ -1,0 +1,159 @@
+This file lists all the possible options in the config file.
+Options can be omitted, in this case they are either switched "off"
+or given a default value. The options given here are grouped
+together, of course, the #defines can arise in any order
+
+
+Digital input lines
+===================
+
+If the #define is given, the number <n> is the number of the digital input line.
+If the #define is not given, no digital input is used for this purpose
+
+The two options PaddleLeft aand PaddleRight must either both be defined, or
+none of the two.
+
+#define StraightKey  <n>
+  // input for a straight key (key to ground)
+#define PaddleLeft <n>
+  // input for left paddle    (key to ground)
+#define PaddleRight  <n>
+  // input for right paddle   (key to ground)
+
+
+Digital output lines
+====================
+Same as for the input lines: if not given, the function is not used
+
+#define CW1  <n>
+  // CW key output line (active high)
+#define CW2  <n>
+  // CW key output line (active low)
+#define PTT1 <n>
+  // PTT output line (active high)
+#define PTT2 <n>
+  // PTT output line (active low)
+#define TONEPIN <n>
+  // if given, produce a square wave side tone here
+#define PULSESHAPER <n>
+  // if given, used for switching on/off the side tone.
+  // This is used to control external hardware which "shapes"
+  // the square wave side tone in order to remove  clicks. 
+  // If a pulse shaper is used, the sidetone extends  10 milli-secs
+  // after key-up to allow for a soft switching-off.
+
+Analog input lines
+==================
+The analog input lines accept values between 0V and AVCC, which is usually connected to
+Vcc. If the #define is not used, this function is not used.
+
+#define POTPIN <n>
+  // Analog input line for speed potentiometer
+#define BUTTONPIN <n>
+  // Analog input line for push-button array
+
+
+Various features
+================
+
+#define MYSERIAL <serial>
+  // choose serial port for the WinKey communication. In most cases
+  // the standard serial connection "Serial" is  used. For 32U4
+  // systems, "Serial" is the USB-Serial connection while "Serial1"  is
+  // the built-in UART of the MCU. For Teensy4 MCUs, there is even more choice.
+
+#define POWERSAVE
+  // if defined, use deep-sleep mode on AVR MCUs. Power-saving deep-sleep
+  // is only entered in standalone mode, and if no key has been hit for about
+  // five minutes. Wake-up is done by hitting a key. You cannot connect (via
+  // USB or serial line) if in deep-sleep mode because there is no USB clock,
+  // USB needs be re-activated when waking up after a key hit.
+
+#define USBMIDI
+  // if defined CW key-up/down and PTT on/off events are sent as MIDI messages
+  // using the USBMIDI library.
+  // While is it in principle possible to use USBMIDI with 32U4 Arduinos such as
+  // the Leonardo, this is much more convenient when using a Teensy.
+
+#define MY_MIDI_CHANNEL <n>
+  // define MIDI channel to use for CW key and PTT messages. Note this is in
+  // the range 0-15 while the standard MIDI numbering is 1-16. If not given,
+  // n=5 is used in the USBMIDI case.
+
+#define MY_KEYDOWN_NOTE <n>
+  // CW key-down/up events are encoded as Midi NoteOn events. This is the note
+  // number to use. If not given, n=1 is used in the USBMIDI case.
+
+#define MY_PTT_NOTE <n>
+ // PTT on/off events are encoded as  MIDI NoteOn events. This is the note
+ // number to use. If not given, n=2 is used in the USBMIDI case.
+
+#define TEENSY4AUDIO
+  // This option only works on a Teensy4.x with the Teensy Audio shield 
+  // with a SGTL5000 codec. If this option is #defined, a high-quality side
+  // is generated on the headphone outputs of the AudioShield.
+  // No USB  audio is used!
+
+#define CWKEYERSHIELD
+  // Use the "CW Keyer Shield" library. In this case, all input/output is done
+  // via this library so (unlike you are happy with the default values) you
+  // also have to define the following things (all starting with SHIELD):
+  // Functions not defined are simply not used.
+  // NOTE: CWKEYERSHIELD disables USBMIDI, POTPIN, and TEENSY4AUDIO, since these
+  //       functionality is handled by the KeyerShield library.
+  //       The definitions MY_MIDI_CHANNEL, MY_KEYDOWN_NOTE, and MY_PTT_NOTE are
+  //       respected if given, but if they are *not* given the KeyerShield's
+  //       internal default values are used.
+
+#define SHIELD_AUDIO_OUTPUT <n>
+  // Has an effect only if CWKEYERSHIELD is defined
+  // Choose audio codec
+  // n=1: WM8960 (the keyer shield)
+  // n=2: SGTL5000 (if using the Teensy Audio Shield)
+
+#define SHIELD_ANALOG_MASTERVOLUME <n>
+  // Has an effect only if CWKEYERSHIELD is defined
+  // define analog input for the "master volume" pot.
+
+#define SHIELD_ANALOG_SIDETONEVOLUME <n>
+  // Has an effect only if CWKEYERSHIELD is defined
+  // define analogg input for the "side tone volume"  pot.
+
+#define SHIELD_ANALOG_SIDETONEFREQ <n>
+  // Has an effect only if CWKEYERSHIELD is defined
+  // define analog input for the "side tone frequency" pot.
+
+#define SHIELD_ANALOG_SPEED
+  // Has an effect only if CWKEYERSHIELD is defined
+  // define analog input for the "CW speed" pot.
+
+#define SHIELD_DIGITAL_MICPTT
+  // Has an effect only if CWKEYERSHIELD is defined
+  // define digital input for a PTT switch.
+
+#define SHIELD_DIGITAL_PTTOUT
+  // Has an effect only if CWKEYERSHIELD is defined
+  // define digital output (active high) for PTT
+
+#define SHIELD_DIGITAL_CWOUT
+  // Has an effect only if CWKEYERSHIELD is defined
+  // define digital output (active high) for CW key-down
+
+#define MY_MUTE_OPTION <n>
+  // Has an effect only if CWKEYERSHIELD is defined
+  // if n=1, then CW Keyer Shield RX-audio is muted while PTT is active
+
+#define MY_DEFAULT_FREQ <n>
+  // Has an effect only if CWKEYERSHIELD is defined
+  // define default side tone frequence (in Hz). Only effective if there is
+  // NO side tone frequency pot.
+
+#define MY_DEFAULT_SIDETONE_VOLUME <n>
+  // Has an effect only if CWKEYERSHIELD is defined
+  // define default side tone volume (n is in the range 0-127). Only effective if
+  // there is NO side tone volume pot.
+
+#define MY_DEFAULT_MASTER_VOLUME <n>
+  // Has an effect only if CWKEYERSHIELD is defined
+  // define default master volume (n is in the range 0-127). Only effective if there
+  // is NO master volume pot.
