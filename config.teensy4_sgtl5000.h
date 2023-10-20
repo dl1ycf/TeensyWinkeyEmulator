@@ -9,7 +9,7 @@
 //
 ////////////////////////////////////////////////////////////////////////////
 
-#define HWSERIAL                    // use standard serial connection (1200 baud) for Winkey protocol
+#define MYSERIAL Serial             // use Serial-over-USB for Winkey protocol
 
 ////////////////////////////////////////////////////////////////////////////
 //
@@ -23,7 +23,12 @@
 #define PaddleRight              1   // Digital input for right paddle
 #define PaddleLeft               2   // Digital input for left paddle
 #define StraightKey              0   // Digital input for straight key
+#define PTT1                     4
+#define CW1                      5
+#define POTPIN                  A2
+#define USBMIDI
 
+#define TEENSY4AUDIO
 ////////////////////////////////////////////////////////////////////////////
 //
 // Hardware settings for the CWKeyerShield library.
@@ -35,7 +40,7 @@
 //
 ////////////////////////////////////////////////////////////////////////////
 
-#define CWKEYERSHIELD                       // use CWKeyerShield library (audio and MIDI)
+//#define CWKEYERSHIELD                       // use CWKeyerShield library (audio and MIDI)
 #define SHIELD_AUDIO_OUTPUT             2   // 0: MQS, 1: I2S(wm8960), 2: I2S(sgtl5000)
 #define SHIELD_ANALOG_SPEED            A2   // Analog input for speed pot
 #define SHIELD_DIGITAL_PTTOUT           4   // Digital output for PTT
@@ -52,4 +57,5 @@
 ////////////////////////////////////////////////////////////////////////////
 #define MY_MUTE_OPTION                1   // set to 1 then RX audio is muted during CW PTT
 #define MY_DEFAULT_FREQ             800   // initial setting of side tone frequency
-#define MY_DEFAULT_VOLUME            40   // initial setting of side tone volume (0-127)
+#define MY_DEFAULT_SIDETONE_VOLUME   80   // initial setting of side tone volume (0-127)
+#define MY_DEFAULT_MASTER_VOLUME    100   // initial setting of master volume (0-127)
