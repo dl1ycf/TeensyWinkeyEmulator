@@ -1,12 +1,13 @@
 ////////////////////////////////////////////////////////////////////////////
 //
-// Example config.h file for a "naked" Teensy4 with no external hardware connected.
+// Example config.h file for a "naked" Teensy4 with no external hardware
+// or keys connected.
 // This is meant to produce a device which forms a "bridge" between a
 // contest logger (using the WinKey protocol) and an SDR program such as piHPSDR.
 //
-// The Teensy runs as a keyer in host mode, and sends CW (key-down and key-up
-// events) via MIDI to the SDR program. Any CW keys must be attached to the radio
-// and handled there.
+// The Teensy runs as a keyer in host mode, and sends CW (key-down/up and
+// PTT  on/off events) via MIDI to the SDR program.
+// Any CW keys must be attached to the radio and handled there.
 //
 ////////////////////////////////////////////////////////////////////////////
 

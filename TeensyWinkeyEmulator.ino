@@ -612,7 +612,7 @@ void setup() {
 // Configure serial line if WinKey protocol is used
 //
 #ifdef MYSERIAL
-  MYSERIAL.begin(1200);  // baud rate has no meaning on 32U4 and Teensy systems
+  MYSERIAL.begin(1200);  // baud rate has no meaning  for "true" USB-Serial connections
   highbaud=0;
 #endif
 
@@ -820,7 +820,6 @@ void SendOnOff(int chan, int note, int state) {
 }
 
 void SendControlChange(int chan, int control, int val) {
-  midiEventPacket_t event;
   if (chan < 0 || control < 0) return;
   usbMIDI.sendControlChange(control, val, chan);
   usbMIDI.send_now();
@@ -861,7 +860,7 @@ void SendControlChange(int chan, int control, int val) {
   event.header = 0x09;
   event.byte1  = 0xB0 | chan;
   event.byte2  = control & 0x7F;
-  event.byte3  = control & 0x7F;
+  event.byte3  = val & 0x7F;
   MidiUSB.sendMIDI(event);
   // this is CW, so flush each single event
   MidiUSB.flush();
@@ -1062,7 +1061,7 @@ void ptt_off() {
   digitalWrite(PTT2,HIGH);                                // active low PTT line
 #endif
 
-  SendOnOff(MY_MIDI_CHANNEL, MY_PTT_NOTE, 1);
+  SendOnOff(MY_MIDI_CHANNEL, MY_PTT_NOTE, 0);
   
 #ifdef CWKEYERSHIELD
   cwshield.cwptt(0);
@@ -2615,6 +2614,7 @@ if (actual >= button_debounce) {
   //
   /////////////////////////////////////////////////////////////////////////////////
   switch (LoopCounter++) {
+    static int16_t OldSpeedPinValue = 2000;
     case 0:
        //
        // Adjust CW speed
@@ -2625,8 +2625,14 @@ if (actual >= button_debounce) {
       // x = SpeedPinValue >> 6  is in the range 0 - 63
       // x*WPMrange + 32         is in the range 0 - 1985
       // final result            is in the range 0 - 31
-      SpeedPot=((SpeedPinValue >> 6)*WPMrange+32) >> 6;
-      Speed=MinWPM+SpeedPot;
+      //
+      // Do not change Speed if the SpeedPinValue changes slightly
+      //
+      if (SpeedPinValue > OldSpeedPinValue + 100 || SpeedPinValue < OldSpeedPinValue - 100) {
+        OldSpeedPinValue = SpeedPinValue;
+        SpeedPot=((SpeedPinValue >> 6)*WPMrange+32) >> 6;
+        Speed=MinWPM+SpeedPot;
+      }
 #else
        //
        // If there is no speed pot, or speed pot is handled externally,

@@ -14,7 +14,7 @@
 //
 ////////////////////////////////////////////////////////////////////////////
 
-#define MYSERIAL Serial1	        // use built-in UART ...
+#define MYSERIAL Serial1	  // use built-in UART ...
 #define USBMIDI                   // ... since USB is used for MIDI
 
 ////////////////////////////////////////////////////////////////////////////
@@ -33,7 +33,6 @@
 #define CW1                      6   // Digital output (active high) for CW key-down
 #define PTT1                     7   // Digital output (active high) for PTT on/off
 #define TONEPIN                 10   // Digital output for square wave side tone
-#define PULSESHAPER              9   // Digital output for "switching on" side  tone
 
 
 ////////////////////////////////////////////////////////////////////////////
