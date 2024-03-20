@@ -8,10 +8,11 @@
 // - Arduino with ATmega 328p (Uno) or 32U4 (Leonardo) processors
 // - Teensy 2.0  (32U4 processor)
 // - Teensy 4.0  (Cortex processor) without audio
-// - Teensy 4.0  with AudioShield (SGTL5000 codec)
-// - Teensy 4.0  with CWKeyerShield.
+// - Teensy 4.0  with AudioShield (SGTL5000), with USB audio
+// - Teensy 4.0  with CWKeyerShield, with USB audio
+// - Teensy 4.0 with AudioShield (SGTL5000), *without* USB audio
 //
-// It can make use of the "MIDI" features of the Teensy 2.0 and 4.0
+// It can make use of the "MIDI" features of the Leonardo (and other 32U4 Arduinos), Teensy 2.0 and 4.0
 // It can make use of the "AUDIO" features of Teensy 4.0
 // There are some basic #define's in the file config.h
 // which control which "backends" are used for signalling key-up/down and
@@ -328,7 +329,7 @@ enum ADMIN_COMMAND {
   ADMIN_GETMINOR   = 23, // Firmware minor version, WK3 only
   ADMIN_GETTYPE    = 24, // Get IC Type, WK3 only
   ADMIN_VOLUME     = 25  // Set side tone volume low/high, WK3 only
-};  
+};
 
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -473,8 +474,8 @@ static uint8_t collecting=0;    // bitmap for character entered with the paddle
 static uint8_t collpos=0;       // position for collecting
 static uint8_t sentspace=1;     // space already sent for inter-word distance
 static uint8_t ReplayPointer=0; // This indicates a message is being sent
-static unsigned long wait;      // when "actual" reaches this value terminate current keyer state
-static unsigned long last;      // time of last enddot/enddash
+static unsigned long wait=0;    // when "actual" reaches this value terminate current keyer state
+static unsigned long last=0;    // time of last enddot/enddash
 static unsigned long actual;    // time-stamp for this execution of loop()
 #ifdef POWERSAVE
 static unsigned long watchdog;  // used for going to sleep
@@ -568,25 +569,175 @@ CWKeyerShield cwshield(SHIELD_AUDIO_OUTPUT,
 void init_eeprom();
 
 #ifdef TEENSY4AUDIO
-//
-// Use this if you want to produce a nice side tone from a Teens4/AudioShield
-// combination without using USB audio. Basically, we have a free-running sine
-// oscillator that is routed to the I2S audio codec via a fader. Soft side tone
-// switching is implemented by fading in/out, that is
-//
-// Side tone on:                fade.fadeIn(delay);
-// Side tone off:               fade.fadeOut(delay);
-//
-// where the delay typically is in the range 4-8 msec.
-//
+
 #include "Audio.h"
-AudioSynthWaveformSine   sine;                          // sine oscillator
-AudioEffectFade          fade;                          // fader (amplitude control)
+#include "utility/dspinst.h"
+
+//
+// Sine oscillator with off/on and pulse shaper
+// All is integrated into a monolithic block
+// to minimize computational overhead.
+// The only methods are on/off and setting the frequency.
+// A stereo output with both channels being equal is produced.
+//
+class SideToneSource : public AudioStream
+{
+public:
+    SideToneSource() : AudioStream(0, NULL),
+                       tone(0),  phase(0), incr(0),
+                       rampindex(0) {}
+
+    virtual void update(void);
+
+    void set_frequency(int frequency) {
+      if (frequency < 0) frequency = 0;
+      if (frequency > 8000) frequency = 8000;
+      incr = (frequency * 4294967296.0) / AUDIO_SAMPLE_RATE_EXACT;
+    }
+
+    void onoff(uint8_t state) {
+        tone = state;
+    }
+
+private:
+    uint8_t  tone;         // tone on/off flag
+    uint32_t phase;
+    uint32_t incr;
+    uint8_t  rampindex;  // pointer into the "ramp"
+
+    //
+    // Both the Ramp and the Sine table have been produces with MATHEMATICA
+    // The final value for the audio system must be int32_t and can be
+    // calculated as ramp (uint32_t) * sintab (int32_t)
+    //
+    // The Blackman-Harris-Ramp has a width of 5 msec
+    //
+    static constexpr int RAMP_LENGTH=240;
+    static constexpr uint16_t BlackmanHarrisRamp[RAMP_LENGTH] = {
+      0,      0,      0,      0,      1,      1,      1,      2,
+      2,      3,      4,      5,      7,      9,     11,     13,
+     16,     20,     23,     28,     33,     39,     46,     54,
+     63,     72,     83,     96,    110,    125,    142,    161,
+    182,    205,    231,    259,    290,    323,    360,    400,
+    443,    490,    541,    596,    656,    720,    789,    864,
+    943,   1029,   1120,   1218,   1322,   1433,   1551,   1677,
+   1810,   1952,   2101,   2260,   2427,   2603,   2789,   2984,
+   3190,   3405,   3632,   3869,   4117,   4377,   4648,   4931,
+   5226,   5533,   5853,   6185,   6529,   6887,   7257,   7641,
+   8038,   8448,   8871,   9308,   9758,  10221,  10698,  11188,
+  11691,  12207,  12736,  13277,  13832,  14399,  14978,  15569,
+  16172,  16786,  17412,  18048,  18695,  19352,  20019,  20695,
+  21380,  22073,  22775,  23484,  24200,  24922,  25651,  26385,
+  27124,  27868,  28615,  29366,  30119,  30874,  31631,  32389,
+  33146,  33904,  34661,  35416,  36169,  36920,  37667,  38411,
+  39150,  39884,  40613,  41335,  42051,  42760,  43462,  44155,
+  44840,  45516,  46183,  46840,  47487,  48123,  48749,  49363,
+  49966,  50557,  51136,  51703,  52258,  52799,  53328,  53844,
+  54347,  54837,  55314,  55777,  56227,  56664,  57087,  57497,
+  57894,  58278,  58648,  59006,  59350,  59682,  60002,  60309,
+  60604,  60887,  61158,  61418,  61666,  61903,  62130,  62345,
+  62551,  62746,  62932,  63108,  63275,  63434,  63583,  63725,
+  63858,  63984,  64102,  64213,  64317,  64415,  64506,  64592,
+  64671,  64746,  64815,  64879,  64939,  64994,  65045,  65092,
+  65135,  65175,  65212,  65245,  65276,  65304,  65330,  65353,
+  65374,  65393,  65410,  65425,  65439,  65452,  65463,  65472,
+  65481,  65489,  65496,  65502,  65507,  65512,  65515,  65519,
+  65522,  65524,  65526,  65528,  65530,  65531,  65532,  65533,
+  65533,  65534,  65534,  65534,  65535,  65535,  65535,  65535
+};
+
+    static constexpr int SinTabLen = 257;
+    static constexpr int16_t SineTab[SinTabLen] = {
+        0,      804,     1608,     2410,     3212,     4011,     4808,     5602,
+     6393,     7179,     7962,     8739,     9512,    10278,    11039,    11793,
+    12539,    13279,    14010,    14732,    15446,    16151,    16846,    17530,
+    18204,    18868,    19519,    20159,    20787,    21403,    22005,    22594,
+    23170,    23731,    24279,    24811,    25329,    25832,    26319,    26790,
+    27245,    27683,    28105,    28510,    28898,    29268,    29621,    29956,
+    30273,    30571,    30852,    31113,    31356,    31580,    31785,    31971,
+    32137,    32285,    32412,    32521,    32609,    32678,    32728,    32757,
+    32767,    32757,    32728,    32678,    32609,    32521,    32412,    32285,
+    32137,    31971,    31785,    31580,    31356,    31113,    30852,    30571,
+    30273,    29956,    29621,    29268,    28898,    28510,    28105,    27683,
+    27245,    26790,    26319,    25832,    25329,    24811,    24279,    23731,
+    23170,    22594,    22005,    21403,    20787,    20159,    19519,    18868,
+    18204,    17530,    16846,    16151,    15446,    14732,    14010,    13279,
+    12539,    11793,    11039,    10278,     9512,     8739,     7962,     7179,
+     6393,     5602,     4808,     4011,     3212,     2410,     1608,      804,
+        0,     -804,    -1608,    -2410,    -3212,    -4011,    -4808,    -5602,
+    -6393,    -7179,    -7962,    -8739,    -9512,   -10278,   -11039,   -11793,
+   -12539,   -13279,   -14010,   -14732,   -15446,   -16151,   -16846,   -17530,
+   -18204,   -18868,   -19519,   -20159,   -20787,   -21403,   -22005,   -22594,
+   -23170,   -23731,   -24279,   -24811,   -25329,   -25832,   -26319,   -26790,
+   -27245,   -27683,   -28105,   -28510,   -28898,   -29268,   -29621,   -29956,
+   -30273,   -30571,   -30852,   -31113,   -31356,   -31580,   -31785,   -31971,
+   -32137,   -32285,   -32412,   -32521,   -32609,   -32678,   -32728,   -32757,
+   -32767,   -32757,   -32728,   -32678,   -32609,   -32521,   -32412,   -32285,
+   -32137,   -31971,   -31785,   -31580,   -31356,   -31113,   -30852,   -30571,
+   -30273,   -29956,   -29621,   -29268,   -28898,   -28510,   -28105,   -27683,
+   -27245,   -26790,   -26319,   -25832,   -25329,   -24811,   -24279,   -23731,
+   -23170,   -22594,   -22005,   -21403,   -20787,   -20159,   -19519,   -18868,
+   -18204,   -17530,   -16846,   -16151,   -15446,   -14732,   -14010,   -13279,
+   -12539,   -11793,   -11039,   -10278,    -9512,    -8739,    -7962,    -7179,
+    -6393,    -5602,    -4808,    -4011,    -3212,    -2410,    -1608,     -804,
+    0
+};
+
+};
+
+void SideToneSource::update() {
+  audio_block_t *block;
+  //if (tone || rampindex) {
+    block = allocate();
+    if (block) {
+      uint32_t ph = phase;  // use local variable to allow for compiler optimization
+      uint32_t in = incr;   // use local variable to allow for compiler optimization
+      for (int i=0; i<AUDIO_BLOCK_SAMPLES; i++) {
+        int ind = ph >> 24;                  // bits 24-31 of phase: index to SineTab
+        uint32_t scal = (ph >> 8) & 0xFFFF;  // bits 8-16  of phase: used for interpolation
+        ph += in;                            // increment phase
+        int32_t val1 = SineTab[ind];         // left  edge value, Range: -32767 ... 32767
+        int32_t val2 = SineTab[ind+1];       // right edge value, Range: -32767 ... 32767
+        val2 *= scal;
+        val1 *= (65536 - scal);              // val1 + val2 is the interpolated value -2^31 ... 2^31
+        //
+        // We must use upper 16 bits of val1+val2 if we have climbed the ramp.
+        // Within the ramp, take ((val1+val2)*ramp) >> 32
+        //
+        if (tone) {
+          if (rampindex < RAMP_LENGTH) {
+            // key-down, still climbing the ramp
+            uint16_t ramp = BlackmanHarrisRamp[rampindex++];
+            block->data[i] = multiply_32x32_rshift32(val1 + val2, ramp);
+          } else {
+            // key-down, max. amplitude reached
+            block->data[i] = (val1 + val2) >> 16;
+          }
+        } else if (rampindex) {
+          // key-up but still descending the ramp
+          uint16_t ramp = BlackmanHarrisRamp[--rampindex];
+          block->data[i] = multiply_32x32_rshift32(val1 + val2, ramp);
+        } else {
+          // key-down and pulse completed
+          block->data[i]=0;
+        }
+      }
+      phase = ph;
+      //
+      // transmit the side tone to left and right channel, then release
+      //
+      transmit(block, 0);
+      transmit(block, 1);
+      release(block);
+    }
+  //}
+}
+
 AudioOutputI2S           i2s;                           // audio output
-AudioConnection          patchCord1(sine, fade);        // connect oscillator to fader
-AudioConnection          patchCord2(fade, 0, i2s, 0);   // connect fader to left output channel
-AudioConnection          patchCord3(fade, 0, i2s, 1);   // connect fader to right output channel
 AudioControlSGTL5000     sgtl5000;                      // controller for SGTL volume etc.
+SideToneSource           sidetone;                      // our side tone generator
+
+
 #endif
 
 
@@ -690,14 +841,16 @@ void setup() {
 //
 // Init audio subsystem and set default parameters
 //
-AudioMemory(16);
+AudioMemory(32);
 AudioNoInterrupts();
 
-sine.frequency(myfreq);  // Initial setting (has no effect)
-sine.amplitude(0.5);
+sidetone.set_frequency(400);  // Initial setting (has no effect)
 sgtl5000.enable();       // Enable I2S output
-sgtl5000.volume(0.55);   // SGTL master volume. Adjust to your hardware
-fade.fadeOut(5);         // Switch off tone after boot-up
+sgtl5000.volume(0.40);   // SGTL master volume. Adjust to your hardware
+
+(void) new AudioConnection(sidetone, 0, i2s, 0);
+(void) new AudioConnection(sidetone, 1, i2s, 1);
+
 AudioInterrupts();
 
 
@@ -815,7 +968,7 @@ void SendOnOff(int chan, int note, int state) {
     usbMIDI.sendNoteOn(note, 127, chan);
   } else {
     usbMIDI.sendNoteOn(note,   0, chan);
-  }    
+  }
   usbMIDI.send_now();
 }
 
@@ -892,7 +1045,7 @@ void DrainMIDI() {
     do {
       rx = MidiUSB.read();
     } while (rx.header != 0);
-#endif    
+#endif
 #ifdef USBMIDI
     if (usbMIDI.read()) {
       // nothing to be done
@@ -974,7 +1127,7 @@ void keydown() {
  cwshield.key(1);
 #endif
 #ifdef TEENSY4AUDIO
-  if (SIDETONE_ENABLED) fade.fadeIn(5);
+  if (SIDETONE_ENABLED) sidetone.onoff(1);
 #endif
 }
 
@@ -1009,7 +1162,7 @@ void keyup() {
  cwshield.key(0);
 #endif
 #ifdef TEENSY4AUDIO
-  fade.fadeOut(5);
+  sidetone.onoff(0);
 #endif
 }
 
@@ -1033,7 +1186,7 @@ void ptt_on() {
   digitalWrite(PTT2,LOW);
 #endif
 
-  
+
   SendOnOff(MY_MIDI_CHANNEL, MY_PTT_NOTE, 1);
 
 #ifdef CWKEYERSHIELD
@@ -1062,7 +1215,7 @@ void ptt_off() {
 #endif
 
   SendOnOff(MY_MIDI_CHANNEL, MY_PTT_NOTE, 0);
-  
+
 #ifdef CWKEYERSHIELD
   cwshield.cwptt(0);
 #endif
@@ -1286,7 +1439,7 @@ void keyer_state_machine() {
   }
 
   static int old_myspeed=0;
-    
+
   if (myspeed != old_myspeed) {
     old_myspeed=myspeed;
     SendControlChange(MY_MIDI_CHANNEL, MY_SPEED_CTL, myspeed);
@@ -1969,7 +2122,7 @@ void WinKey_state_machine() {
               highbaud=1;
             }
             winkey_state=FREE;
-            break;            
+            break;
           case ADMIN_RTTY:  // expect 2 bytes with RTTY parameters, WK3 only.
             inum=2;
             winkey_state=SWALLOW;
@@ -1996,7 +2149,7 @@ void WinKey_state_machine() {
           case ADMIN_VOLUME: // Sidetone volume (WK3 only), ignored
             inum=1;
             winkey_state=SWALLOW;
-            break;            
+            break;
           default: // Should not occur. Do not return anything.
              winkey_state=FREE;
              break;
@@ -2029,7 +2182,7 @@ void WinKey_state_machine() {
             break;
           case 1:
             Tail=byte;
-            winkey_state=FREE;  
+            winkey_state=FREE;
         }
         break;
       case POTSET:
@@ -2216,7 +2369,7 @@ void WinKey_state_machine() {
             // character_buffer prosign command
            queue(3,PROSIGN,ps1,byte);
            winkey_state=FREE;
-        }  
+        }
         break;
       case BUFSPD:
         queue(2,BUFSPD,byte,0);
@@ -2282,9 +2435,9 @@ void goto_sleep() {
     // on Leonardos but this does not exist for Teensy2.
     //
     set_sleep_mode(SLEEP_MODE_PWR_SAVE);
-#if defined(USBCON) && !defined(TEENSYDUINO)  
+#if defined(USBCON) && !defined(TEENSYDUINO)
     USBDevice.detach();  // This works on Leonardo but not on Teensy2
-#endif     
+#endif
 #ifdef MYSERIAL
     MYSERIAL.end();  // Serial.end() includes USB shutdown on Teensy2
 #endif
@@ -2428,7 +2581,7 @@ void loop() {
 #ifdef POWERSAVE
       watchdog=actual;
 #endif
-      StraightDebounce=actual+10;
+      StraightDebounce=actual+15;
       straight=i;
     }
   }
@@ -2614,7 +2767,9 @@ if (actual >= button_debounce) {
   //
   /////////////////////////////////////////////////////////////////////////////////
   switch (LoopCounter++) {
+#ifdef POTPIN
     static int16_t OldSpeedPinValue = 2000;
+#endif
     case 0:
        //
        // Adjust CW speed
@@ -2647,12 +2802,12 @@ if (actual >= button_debounce) {
     case 2:
        //
        // Check if Side tone settings changed
-       //       
+       //
        if (Sidetone != old_sidetone) {
          myfreq=4000/(Sidetone & 0x0F);
          old_sidetone = Sidetone;
 #ifdef TEENSY4AUDIO
-         sine.frequency(myfreq);
+         sidetone.set_frequency(myfreq);
 #endif
 #ifdef CWKEYERSHIELD
          if (myfreq <= 1270) {
