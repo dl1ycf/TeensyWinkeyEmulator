@@ -1,7 +1,7 @@
 ////////////////////////////////////////////////////////////////////////////
 //
 // Example config.h file for a combination of the Teensy4 with its AudioShield
-// that has an NXP SGTL5000 audio codec. This version does *not*  use USB audio,
+// that has an NXP SGTL5000 audio codec. This version does *not* use USB audio,
 // the audio codec is solely used to produce a nice side tone.
 // So compile with the "Serial+MIDI" option. If you do not need MIDI commmands
 // to the PC host, un-comment "USBMIDI" below, and compile with the "Serial"
@@ -11,7 +11,7 @@
 
 #define MYSERIAL Serial             // use Serial-over-USB for Winkey protocol
 #define TEENSY4AUDIO                // use I2S audio (SGTL5000) for side tone
-#define USBMIDI
+#define USBMIDI                     // use MIDI to control SDR program
 
 ////////////////////////////////////////////////////////////////////////////
 //

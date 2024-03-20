@@ -21,9 +21,10 @@
 //
 ////////////////////////////////////////////////////////////////////////////
 
-#define PaddleRight              0   // Digital input for right paddle
-#define PaddleLeft               1   // Digital input for left paddle
-#define StraightKey              2   // Digital input for straight key
+#define PaddleRight              1   // Digital input for right paddle
+#define PaddleLeft               2   // Digital input for left paddle
+#define StraightKey              0   // Digital input for straight key
+
 
 ////////////////////////////////////////////////////////////////////////////
 //
