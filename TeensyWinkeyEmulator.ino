@@ -687,7 +687,11 @@ private:
 
 void SideToneSource::update() {
   audio_block_t *block;
-  //if (tone || rampindex) {
+  //
+  // If there is nothing to do, simply do nothing
+  // (no need to create a block of silence)
+  //
+  if (tone || rampindex) {
     block = allocate();
     if (block) {
       uint32_t ph = phase;  // use local variable to allow for compiler optimization
@@ -730,12 +734,14 @@ void SideToneSource::update() {
       transmit(block, 1);
       release(block);
     }
-  //}
+  }
 }
 
 AudioOutputI2S           i2s;                           // audio output
-AudioControlSGTL5000     sgtl5000;                      // controller for SGTL volume etc.
+AudioControlSGTL5000     audiocontrol;                  // controller for SGTL volume etc.
 SideToneSource           sidetone;                      // our side tone generator
+AudioConnection p1(sidetone, 0, i2s, 0);                // connect side tone generator ...
+AudioConnection p2(sidetone, 1, i2s, 1);                // ... to audio device
 
 
 #endif
@@ -750,6 +756,8 @@ SideToneSource           sidetone;                      // our side tone generat
 // init Audio+MIDI
 //
 //////////////////////////////////////////////////////////////////////////////
+
+void SendOnOff(int chan, int note, int state);
 
 void setup() {
 
@@ -841,20 +849,20 @@ void setup() {
 //
 // Init audio subsystem and set default parameters
 //
-AudioMemory(32);
+AudioMemory(128);
 AudioNoInterrupts();
 
-sidetone.set_frequency(400);  // Initial setting (has no effect)
-sgtl5000.enable();       // Enable I2S output
-sgtl5000.volume(0.40);   // SGTL master volume. Adjust to your hardware
-
-(void) new AudioConnection(sidetone, 0, i2s, 0);
-(void) new AudioConnection(sidetone, 1, i2s, 1);
+sidetone.set_frequency(800);  // Initial setting
+audiocontrol.enable();        // Enable Audio Codec
+audiocontrol.volume(0.40);    // Audio Codec master volume. Adjust to your hardware
 
 AudioInterrupts();
 
 
 #endif  // TEENSY4AUDIO
+
+SendOnOff(MY_MIDI_CHANNEL, MY_KEYDOWN_NOTE, 0);
+SendOnOff(MY_MIDI_CHANNEL, MY_PTT_NOTE, 0);
 
 }
 
@@ -2581,7 +2589,7 @@ void loop() {
 #ifdef POWERSAVE
       watchdog=actual;
 #endif
-      StraightDebounce=actual+15;
+      StraightDebounce=actual+25;
       straight=i;
     }
   }
