@@ -16,10 +16,10 @@ Standalone keyer mode
 =====================
 
 The keyer can be  operated "stand-alone", that is, without being connected to a computer.
-However, this is not the  mode of operation I have in mind, since NO POSSIBILITY to
-"program" the keyer (or  change its settings) via the paddle. So in standalone mode,
-you have to be happy with the settings in the EEPROM, the only exception is that you
-can change the CW speed with a potentiometer.
+However, this is not the  mode of operation I have in mind, since this keyer offers
+NO POSSIBILITY to "program" the keyer (or  change its settings) via the paddle.
+This means that in standalone mode, you have to be happy with the settings in the EEPROM,
+the only exception is that you can change the CW speed with a potentiometer.
 
 Implementation of the Winkey Protocol
 =====================================
@@ -72,7 +72,7 @@ do not wire one, you have to un-comment tha #define.
 config.arduino.h
 ----------------
 
-This works with an Arduino Uno or similar, and the most stripped-down variant.
+This works with an Arduino Uno or similar, and is the most stripped-down variant.
 It is a keyer implementing the K3NG WinKey protocol over a USB-to-serial connection.
 
 
@@ -80,15 +80,15 @@ config.leonardo.h
 -----------------
 
 This works with an Arduino Leonardo. The WinKey protocol is implemented on the
-HARDWARE serial line, while the USB connection is used for MIDI and MIDI messages
-(Key-down/up, PTT on/off, CW speed change) are sent to the host PC via USB.
+HARDWARE serial line, while the USB connection is used for MIDI.
+MIDI messages for Key-down/up, PTT on/off, and CW speed change are sent to the host PC via USB.
 
 config.teensy.h
 ---------------
 
 This works with a Teensy2 (or higher). The WinKey protocol is implemented on the
-HARDWARE serial line, while the USB connection is used for MIDI and MIDI messages
-(Key-down/up, PTT on/off, CW speed change) are sent to the host PC via USB.
+HARDWARE serial line, while the USB connection is used for MIDI.
+MIDI messages for Key-down/up, PTT on/off, and CW speed change are sent to the host PC via USB.
 The only difference between teensy and leonardo is that teensy uses USBMIDI while
 leonardo uses MIDIUSB.
 
@@ -103,15 +103,22 @@ config.teensy4_sgtl5000.h
 -------------------------
 
 This works with a Teensy4 and the AudioShield attached. In addition to the teensy4_bare
-model, a side tone is produced with the AudioShield.
+model, a side tone is produced with the AudioShield. Audio fed to the LineIn inputs
+(e.g. RX audio) is copied to the Headphone output except when PTT is active, then
+the audio is replaced by "silence + side tone". Compile with the "Serial+MIDI"
+USB option (USB audio is NOT needed and NOT used, which means that, in case
+of RFI problems,  one can use  USB opto-isolators which normally restrict the speed
+such that USB audio stops working).
 
 config.keyershield_sgtl5000.h
 -----------------------------
 
 This works with a Teensy4 and the AudioShield attached. In addition to the teensy4_bare
 the device also appears as a sound card at the host computer, such that RX audio can
-be played over the AudioShield. In addition, a latency-free side tone is generated and
-mixed with the RX audio.
+be played over the AudioShield. In addition, a low-latency side tone is generated and
+mixed with the RX audio from USB. This is a model where the "CW Keyer" functionality
+of the full-fledged "CW Keyer Shield" can be obtained from standard hardware, namely
+a Teensy4 and a Teensy AudioShield.
 
 config.keyershield.h
 --------------------
