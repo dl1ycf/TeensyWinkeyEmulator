@@ -27,9 +27,9 @@
 #define PaddleLeft               3   // Digital input for left paddle
 #define StraightKey              4   // Digital input for straight key
 #define CW1                      6   // Digital output (active high) for CW key-down
-#define CW2                      7   // Digital output (active high) for CW key-down
-#define PTT1                     8   // Digital output (active high) for PTT on/off
-#define PTT2                     9   // Digital output (active low) for PTT on/off
+#define PTT1                     7   // Digital output (active high) for PTT on/off
+#define CW2                      8   // Digital output (active low) for CW key-down
+#define PTT2                     9   // Digital output (active low)  for PTT on/off
 #define TONEPIN                 10   // Digital output for square wave side tone
 
 
@@ -40,5 +40,5 @@
 //
 ////////////////////////////////////////////////////////////////////////////
 
-//#define POTPIN                   A6   // Analog input for speed pot handled in the keyer
-//#define BUTTONPIN                A8   // Analog input for push-buttons
+#define POTPIN                  A6   // Analog input for speed pot handled in the keyer
+#define BUTTONPIN               A8   // Analog input for push-button array

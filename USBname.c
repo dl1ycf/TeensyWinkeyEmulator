@@ -26,7 +26,7 @@ struct usb_string_descriptor_struct usb_string_product_name = {
 #if defined(USBMIDI)
 #if defined(__AVR_ATmega32U4__) || defined(__AVR_AT90USB646__) || defined(__AVR_AT90USB1286__)
 //
-// Teensy2: USB names are much more "hard-wired"so there is not much we can do here ...
+// Teensy2: USB names are much more "hard-wired" so there is not much we can do here ...
 #else
 //
 // Teensy3.x and Teensy4.x with USBMIDI
