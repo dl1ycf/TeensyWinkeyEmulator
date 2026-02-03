@@ -2,7 +2,7 @@
 //
 // CW keyer with audio (WinKey emulator)
 //
-// (C) Christoph van Wüllen, DL1YCF, 2020-2023
+// (C) Christoph van Wüllen, DL1YCF, 2020-2025
 //
 // Tested with
 // - Arduino with ATmega 328p (Uno) or 32U4 (Leonardo) processors
@@ -10,7 +10,7 @@
 // - Teensy 4.0  (Cortex processor) without audio
 // - Teensy 4.0  with AudioShield (SGTL5000), with USB audio
 // - Teensy 4.0  with CWKeyerShield, with USB audio
-// - Teensy 4.0 with AudioShield (SGTL5000), *without* USB audio
+// - Teensy 4.0  with AudioShield (SGTL5000), *without* USB audio
 //
 // It can make use of the "MIDI" features of the Leonardo (and other 32U4 Arduinos), Teensy 2.0 and 4.0
 // It can make use of the "AUDIO" features of Teensy 4.0
@@ -294,8 +294,6 @@ enum WKSTAT {
   FREE,
   SWALLOW,
   XECHO,
-  WRPROM,
-  RDPROM,
   MESSAGE,
   POINTER_1,
   POINTER_2,
@@ -389,6 +387,7 @@ static uint8_t Speed=21;                // addr=0x02 // overridden by the speed 
 static uint8_t Sidetone=5;              // addr=0x03 // 800 Hz
 static uint8_t Weight=50;               // addr=0x04 // used to modify dit/dah length
 static uint8_t LeadIn=0;                // addr=0x05 // PTT Lead-in time (in units of 10 ms)
+//static uint8_t LeadIn=15;                // addr=0x05 // PTT Lead-in time (in units of 10 ms)
 static uint8_t Tail=0;                  // addr=0x06 // PTT tail (in 10 ms), zero means "use hang bits"
 static uint8_t MinWPM=8;                // addr=0x07 // CW speed when speed pot maximally CCW
 static uint8_t WPMrange=20;             // addr=0x08 // CW speed range for SpeedPot
@@ -398,6 +397,7 @@ static uint8_t Farnsworth=10;           // addr=0x0b // Farnsworth speed (10 mea
 static uint8_t PaddlePoint=50;          // addr=0x0c // ignored in this code (Paddle Switchpoint setting)
 static uint8_t Ratio=50;                // addr=0x0d // dah/dit ratio = (3*ratio)/50
 static uint8_t PinConfig=0x0E;          // addr=0x0e // PTT disabled
+//static uint8_t PinConfig=0x23;          // addr=0x0e // PTT and SideTone enabled, 4 dits hang time
                                         // addr=0x0f // k12ext (Letter space, zero cuts, etc.)
                                         // addr=0x10 // CmdWpm
                                         // addr=0x11 // FreePtr
@@ -583,8 +583,8 @@ void init_eeprom();
 class SideToneSource : public AudioStream
 {
 public:
-    SideToneSource() : AudioStream(0, NULL),
-                       tone(0),  phase(0), incr(0),
+    SideToneSource() : AudioStream(2, inputQueueArray),
+                       key(0),  ptt(0), enabled(1), phase(0), incr(71582788),
                        rampindex(0) {}
 
     virtual void update(void);
@@ -595,57 +595,81 @@ public:
       incr = (frequency * 4294967296.0) / AUDIO_SAMPLE_RATE_EXACT;
     }
 
-    void onoff(uint8_t state) {
-        tone = state;
+    void set_key(uint8_t state) {
+        key = state;
+    }
+
+    void set_ptt(uint8_t state) {
+      ptt = state;
+    }
+
+    void enable(uint8_t state) {
+      enabled = state;
     }
 
 private:
-    uint8_t  tone;         // tone on/off flag
+    audio_block_t *inputQueueArray[2];
+    uint8_t  key;
+    uint8_t  ptt;
+    uint8_t  enabled;
     uint32_t phase;
     uint32_t incr;
     uint8_t  rampindex;  // pointer into the "ramp"
 
     //
     // Both the Ramp and the Sine table have been produces with MATHEMATICA
-    // The final value for the audio system must be int32_t and can be
-    // calculated as ramp (uint32_t) * sintab (int32_t)
+    // The ramp is converted to uint16_t 0...65535
+    // The sine values are int16_t -32767 ... 32767
     //
-    // The Blackman-Harris-Ramp has a width of 5 msec
+    // The RaisedCosine Ramp has a width of 5 msec (240 samples)
+    //
+    // MATHEMATICA code for the ramp:
+    //
+    // RC[x_] = 1/2 (1 + Cos[Pi x + Pi]);
+    // MyTab = Table[Round[65535 RC[i/240]], {i, 1, 240}];
+    // Do[{l = Table[PaddedForm[MyTab[[j]], 5], {j, 8*i + 1, 8*i + 8}], Print[Row[l, ","], ","]}, {i, 0, 29}]
     //
     static constexpr int RAMP_LENGTH=240;
-    static constexpr uint16_t BlackmanHarrisRamp[RAMP_LENGTH] = {
-      0,      0,      0,      0,      1,      1,      1,      2,
-      2,      3,      4,      5,      7,      9,     11,     13,
-     16,     20,     23,     28,     33,     39,     46,     54,
-     63,     72,     83,     96,    110,    125,    142,    161,
-    182,    205,    231,    259,    290,    323,    360,    400,
-    443,    490,    541,    596,    656,    720,    789,    864,
-    943,   1029,   1120,   1218,   1322,   1433,   1551,   1677,
-   1810,   1952,   2101,   2260,   2427,   2603,   2789,   2984,
-   3190,   3405,   3632,   3869,   4117,   4377,   4648,   4931,
-   5226,   5533,   5853,   6185,   6529,   6887,   7257,   7641,
-   8038,   8448,   8871,   9308,   9758,  10221,  10698,  11188,
-  11691,  12207,  12736,  13277,  13832,  14399,  14978,  15569,
-  16172,  16786,  17412,  18048,  18695,  19352,  20019,  20695,
-  21380,  22073,  22775,  23484,  24200,  24922,  25651,  26385,
-  27124,  27868,  28615,  29366,  30119,  30874,  31631,  32389,
-  33146,  33904,  34661,  35416,  36169,  36920,  37667,  38411,
-  39150,  39884,  40613,  41335,  42051,  42760,  43462,  44155,
-  44840,  45516,  46183,  46840,  47487,  48123,  48749,  49363,
-  49966,  50557,  51136,  51703,  52258,  52799,  53328,  53844,
-  54347,  54837,  55314,  55777,  56227,  56664,  57087,  57497,
-  57894,  58278,  58648,  59006,  59350,  59682,  60002,  60309,
-  60604,  60887,  61158,  61418,  61666,  61903,  62130,  62345,
-  62551,  62746,  62932,  63108,  63275,  63434,  63583,  63725,
-  63858,  63984,  64102,  64213,  64317,  64415,  64506,  64592,
-  64671,  64746,  64815,  64879,  64939,  64994,  65045,  65092,
-  65135,  65175,  65212,  65245,  65276,  65304,  65330,  65353,
-  65374,  65393,  65410,  65425,  65439,  65452,  65463,  65472,
-  65481,  65489,  65496,  65502,  65507,  65512,  65515,  65519,
-  65522,  65524,  65526,  65528,  65530,  65531,  65532,  65533,
-  65533,  65534,  65534,  65534,  65535,  65535,  65535,  65535
-};
+    static constexpr uint16_t RaisedCosine[RAMP_LENGTH] = {
+     3,    11,    25,    45,    70,   101,   137,   180,
+   227,   280,   339,   403,   473,   549,   630,   716,
+   808,   905,  1008,  1117,  1230,  1349,  1474,  1604,
+  1739,  1879,  2025,  2176,  2333,  2494,  2661,  2833,
+  3010,  3192,  3379,  3571,  3769,  3971,  4178,  4390,
+  4607,  4829,  5055,  5286,  5522,  5763,  6008,  6258,
+  6512,  6771,  7035,  7302,  7574,  7851,  8132,  8417,
+  8706,  8999,  9296,  9597,  9903, 10212, 10525, 10842,
+ 11162, 11487, 11815, 12146, 12481, 12820, 13162, 13507,
+ 13856, 14208, 14563, 14921, 15282, 15647, 16014, 16384,
+ 16757, 17132, 17510, 17891, 18275, 18661, 19049, 19440,
+ 19833, 20228, 20625, 21025, 21426, 21829, 22235, 22642,
+ 23051, 23461, 23873, 24287, 24702, 25118, 25536, 25955,
+ 26375, 26796, 27218, 27642, 28066, 28490, 28916, 29342,
+ 29769, 30197, 30624, 31053, 31481, 31910, 32339, 32768,
+ 33196, 33625, 34054, 34482, 34911, 35338, 35766, 36193,
+ 36619, 37045, 37469, 37893, 38317, 38739, 39160, 39580,
+ 39999, 40417, 40833, 41248, 41662, 42074, 42484, 42893,
+ 43300, 43706, 44109, 44510, 44910, 45307, 45702, 46095,
+ 46486, 46874, 47260, 47644, 48025, 48403, 48778, 49151,
+ 49521, 49888, 50253, 50614, 50972, 51327, 51679, 52028,
+ 52373, 52715, 53054, 53389, 53720, 54048, 54373, 54693,
+ 55010, 55323, 55632, 55938, 56239, 56536, 56829, 57118,
+ 57403, 57684, 57961, 58233, 58500, 58764, 59023, 59277,
+ 59527, 59772, 60013, 60249, 60480, 60706, 60928, 61145,
+ 61357, 61564, 61766, 61964, 62156, 62343, 62525, 62702,
+ 62874, 63041, 63202, 63359, 63510, 63656, 63796, 63931,
+ 64061, 64186, 64305, 64418, 64527, 64630, 64727, 64819,
+ 64905, 64986, 65062, 65132, 65196, 65255, 65308, 65355,
+ 65398, 65434, 65465, 65490, 65510, 65524, 65532, 65535
+ };
 
+//
+// MATHEMATICA code for the sine table
+//
+// MyTab = Table[Round[32767 Sin[2 i Pi /256]], {i, 0, 256}];
+// Do[{l = Table[PaddedForm[MyTab[[j]], 5], {j, 8*i + 1, 8*i + 8}], Print[Row[l, ","], ","]}, {i, 0, 31}]
+// Print[0]
+//
     static constexpr int SinTabLen = 257;
     static constexpr int16_t SineTab[SinTabLen] = {
         0,      804,     1608,     2410,     3212,     4011,     4808,     5602,
@@ -686,64 +710,74 @@ private:
 };
 
 void SideToneSource::update() {
-  audio_block_t *block;
-  //
-  // If there is nothing to do, simply do nothing
-  // (no need to create a block of silence)
-  //
-  if (tone || rampindex) {
-    block = allocate();
-    if (block) {
-      uint32_t ph = phase;  // use local variable to allow for compiler optimization
-      uint32_t in = incr;   // use local variable to allow for compiler optimization
-      for (int i=0; i<AUDIO_BLOCK_SAMPLES; i++) {
-        int ind = ph >> 24;                  // bits 24-31 of phase: index to SineTab
-        uint32_t scal = (ph >> 8) & 0xFFFF;  // bits 8-16  of phase: used for interpolation
-        ph += in;                            // increment phase
-        int32_t val1 = SineTab[ind];         // left  edge value, Range: -32767 ... 32767
-        int32_t val2 = SineTab[ind+1];       // right edge value, Range: -32767 ... 32767
-        val2 *= scal;
-        val1 *= (65536 - scal);              // val1 + val2 is the interpolated value -2^31 ... 2^31
-        //
-        // We must use upper 16 bits of val1+val2 if we have climbed the ramp.
-        // Within the ramp, take ((val1+val2)*ramp) >> 32
-        //
-        if (tone) {
-          if (rampindex < RAMP_LENGTH) {
-            // key-down, still climbing the ramp
-            uint16_t ramp = BlackmanHarrisRamp[rampindex++];
-            block->data[i] = multiply_32x32_rshift32(val1 + val2, ramp);
-          } else {
-            // key-down, max. amplitude reached
-            block->data[i] = (val1 + val2) >> 16;
-          }
-        } else if (rampindex) {
-          // key-up but still descending the ramp
-          uint16_t ramp = BlackmanHarrisRamp[--rampindex];
-          block->data[i] = multiply_32x32_rshift32(val1 + val2, ramp);
+
+  audio_block_t *block_l = receiveWritable(0);
+  audio_block_t *block_r = receiveWritable(1);
+  if (ptt && block_l && block_r && enabled) {
+    //
+    // replace data by "silence + side tone"
+    //
+    uint32_t ph = phase;  // use local variable to allow for compiler optimization
+    uint32_t in = incr;   // use local variable to allow for compiler optimization
+    for (int i=0; i<AUDIO_BLOCK_SAMPLES; i++) {
+      int ind = ph >> 24;                  // bits 24-31 of phase: index to SineTab
+      uint32_t scal = (ph >> 8) & 0xFFFF;  // bits 8-16  of phase: used for interpolation
+      ph += in;                            // increment phase
+      int32_t val1 = SineTab[ind];         // left  edge value, Range: -32767 ... 32767
+      int32_t val2 = SineTab[ind+1];       // right edge value, Range: -32767 ... 32767
+      val2 *= scal;
+      val1 *= (65536 - scal);              // val1 + val2 is the interpolated value -2^31 ... 2^31
+      val1 = (val1 + val2) >> 7;           // Adjust to your hardware
+      //
+      // We must use upper 16 bits of val1 if we have climbed the ramp.
+      // Within the ramp, take (val1*ramp) >> 32
+      //
+      if (key) {
+        if (rampindex < RAMP_LENGTH) {
+          //
+          // key-down, still climbing the ramp
+          //
+          uint16_t ramp = RaisedCosine[rampindex++];
+          uint16_t side = multiply_32x32_rshift32(val1, ramp);
+          block_r->data[i] = side;
+          block_l->data[i] = side;
         } else {
-          // key-down and pulse completed
-          block->data[i]=0;
+          //
+          // key-down, max. amplitude reached
+          //
+          uint16_t side = val1 >> 16;
+          block_r->data[i] = side;
+          block_l->data[i] = side;
         }
+      } else if (rampindex) {
+        //
+        // key-up but still descending the ramp
+        //
+        uint16_t ramp = RaisedCosine[--rampindex];
+        uint16_t side =  multiply_32x32_rshift32(val1, ramp);
+        block_r->data[i] = side;
+        block_l->data[i] = side;
+      } else {
+        //
+        // key-up, min. amplitude reached
+        //
+        block_r->data[i] = 0;
+        block_l->data[i] = 0;
       }
-      phase = ph;
-      //
-      // transmit the side tone to left and right channel, then release
-      //
-      transmit(block, 0);
-      transmit(block, 1);
-      release(block);
     }
+    phase = ph;
+  }
+  if (block_l) {
+    transmit(block_l,0);
+    release(block_l);
+  }
+  if (block_r) {
+    transmit(block_r,1);
+    release(block_r);
   }
 }
 
-AudioOutputI2S           i2s;                           // audio output
-AudioControlSGTL5000     audiocontrol;                  // controller for SGTL volume etc.
-SideToneSource           sidetone;                      // our side tone generator
-AudioConnection p1(sidetone, 0, i2s, 0);                // connect side tone generator ...
-AudioConnection p2(sidetone, 1, i2s, 1);                // ... to audio device
-
-
+static SideToneSource *sidetone;
 #endif
 
 
@@ -842,6 +876,10 @@ void setup() {
   cwshield.mastervolume(MY_DEFAULT_MASTER_VOLUME);  // 0..127
 #endif
 
+#ifdef CW_KEYER_SHIELD_POT_NOREVERSE
+  cwshield.set_pot_reverse(0);
+#endif
+
 #endif  // CWKEYERSHIELD
 
 
@@ -852,9 +890,21 @@ void setup() {
 AudioMemory(128);
 AudioNoInterrupts();
 
-sidetone.set_frequency(800);  // Initial setting
-audiocontrol.enable();        // Enable Audio Codec
-audiocontrol.volume(0.40);    // Audio Codec master volume. Adjust to your hardware
+AudioOutputI2S        *CodecOut = new AudioOutputI2S;
+AudioInputI2S         *CodecIn  = new AudioInputI2S;
+AudioControlSGTL5000  *Control  = new AudioControlSGTL5000;                  // controller for SGTL volume etc.
+                       sidetone = new SideToneSource;
+
+(void) new AudioConnection(*CodecIn,  0, *sidetone, 0);
+(void) new AudioConnection(*CodecIn,  1, *sidetone, 1);
+(void) new AudioConnection(*sidetone, 0, *CodecOut, 0);
+(void) new AudioConnection(*sidetone, 1, *CodecOut, 1);
+
+
+Control->enable();        // Enable Audio Codec
+Control->volume(0.8);    // Audio Codec master volume. Adjust to your hardware
+Control->inputSelect(AUDIO_INPUT_LINEIN);
+Control->lineInLevel(2);
 
 AudioInterrupts();
 
@@ -883,7 +933,6 @@ void read_from_eeprom() {
 // If magic byte is not found, nothing is done.
 //
   uint8_t i;
-
 
   if (EEPROM.read(0) == MAGIC) {
      ModeRegister = EEPROM.read( 1);
@@ -968,34 +1017,39 @@ void init_eeprom() {
 #ifdef USBMIDI
 //
 // This works for USBMIDI (Teensy)
+// Note that the channel (chan) must be a number in the range 1...16
 //
 void SendOnOff(int chan, int note, int state) {
-  if (chan < 0 || note < 0) return;
-  chan = chan & 0x0F;
+  if (chan < 1 || note < 0) return;
   if (state) {
     usbMIDI.sendNoteOn(note, 127, chan);
   } else {
     usbMIDI.sendNoteOn(note,   0, chan);
   }
-  usbMIDI.send_now();
+  // It turns out that calling send_now() destroys the timing, since
+  // the Teensy stays in that call for an undetermined amount of time.
+  // Just leaving this out produces a working code, and no severe
+  // delays of the MIDI messages have been observed.
+  //usbMIDI.send_now();
 }
 
 void SendControlChange(int chan, int control, int val) {
-  if (chan < 0 || control < 0) return;
+  if (chan < 1 || control < 0) return;
   usbMIDI.sendControlChange(control, val, chan);
-  usbMIDI.send_now();
+  //usbMIDI.send_now();
 }
 #else
 #ifdef MIDIUSB
 //
 // This works for MIDIUSB (Leonardo)
+// Note that the channel (chan) must be a number in the range 1...16
 //
 #include "MIDIUSB.h"
 
 void SendOnOff(int chan, int note, int state) {
   midiEventPacket_t event;
-  if (chan < 0 || note < 0) return;
-  chan = chan & 0x0F;
+  if (chan < 1 || note < 0) return;
+  chan = (chan - 1)  & 0x0F;
   if (state) {
     // Note On
     event.header = 0x09;
@@ -1016,8 +1070,8 @@ void SendOnOff(int chan, int note, int state) {
 
 void SendControlChange(int chan, int control, int val) {
   midiEventPacket_t event;
-  if (chan < 0 || control < 0) return;
-  chan = chan & 0x0F;
+  if (chan < 1 || control < 0) return;
+  chan = (chan - 1)  & 0x0F;
   event.header = 0x09;
   event.byte1  = 0xB0 | chan;
   event.byte2  = control & 0x7F;
@@ -1049,15 +1103,10 @@ void DrainMIDI() {
     cwshield.loop();
 #endif
 #ifdef MIDIUSB
-    midiEventPacket_t rx;
-    do {
-      rx = MidiUSB.read();
-    } while (rx.header != 0);
+    MidiUSB.read();
 #endif
 #ifdef USBMIDI
-    if (usbMIDI.read()) {
-      // nothing to be done
-    }
+    usbMIDI.read();
 #endif
 }
 
@@ -1135,7 +1184,7 @@ void keydown() {
  cwshield.key(1);
 #endif
 #ifdef TEENSY4AUDIO
-  if (SIDETONE_ENABLED) sidetone.onoff(1);
+  if (SIDETONE_ENABLED) sidetone->set_key(1);
 #endif
 }
 
@@ -1170,7 +1219,7 @@ void keyup() {
  cwshield.key(0);
 #endif
 #ifdef TEENSY4AUDIO
-  sidetone.onoff(0);
+  sidetone->set_key(0);
 #endif
 }
 
@@ -1200,6 +1249,9 @@ void ptt_on() {
 #ifdef CWKEYERSHIELD
   cwshield.cwptt(1);
 #endif
+#ifdef TEENSY4AUDIO
+  sidetone->set_ptt(1);
+#endif
 }
 
 //////////////////////////////////////////////////////////////////////////////
@@ -1227,6 +1279,10 @@ void ptt_off() {
 #ifdef CWKEYERSHIELD
   cwshield.cwptt(0);
 #endif
+#ifdef TEENSY4AUDIO
+  sidetone->set_ptt(0);
+#endif
+
 }
 
 //////////////////////////////////////////////////////////////////////////////
@@ -1421,6 +1477,7 @@ void keyer_state_machine() {
   uint8_t  myspeed;             // effective speed (from host, from pot, or buffered)
 
   static unsigned long straight_pressed;  // for timing straight key signals
+  static unsigned long last_beat;
 
 
   //
@@ -1448,9 +1505,17 @@ void keyer_state_machine() {
 
   static int old_myspeed=0;
 
-  if (myspeed != old_myspeed) {
+  //
+  // Report speed over MIDI whenever it has changed,
+  // but at least every 10 seconds
+  //
+  if ((myspeed != old_myspeed) || (actual > last_beat + 9999)) {
+    last_beat = actual;
     old_myspeed=myspeed;
     SendControlChange(MY_MIDI_CHANNEL, MY_SPEED_CTL, myspeed);
+#ifdef CWKEYERSHIELD
+      cwshield.cwspeed(myspeed);
+#endif
   }
 
 
@@ -1621,7 +1686,7 @@ void keyer_state_machine() {
         //
         byte=FromBuffer();
         if (byte >=32 && byte <=127 && SERIAL_ECHO) {
-          ToHost(byte);
+          if (hostmode) ToHost(byte);
           wait=actual+dotlen; // host may wait for the byte before sending the next one
         }
         switch (byte) {
@@ -1908,55 +1973,6 @@ void WinKey_state_machine() {
       queue(1,BUFNOP,0,0);
       winkey_state=FREE;
       break;
-     case RDPROM:
-      // dump EEPROM command. Report "standard" magic byte
-      // at address 0.
-      //
-      // Nothing must interrupt us, therefore no state machine
-      // at 1200 baud, each character has a mere transmission time
-      // of more than 8 msec, so do a pause of 12 msec after each
-      // character. Since a complete dump takes much time, check
-      // for incoming MIDI messages frequently (every 6 msec or so).
-      //
-
-      for (inum=0; inum<256; inum++) {
-        if (inum ==  0) {
-          ToHost(0xA5);  // report 0xA5 no matter which magic byte we are using here
-        } else {
-          ToHost(EEPROM.read(inum));
-        }
-        if (highbaud) {
-          delay(1);
-          DrainMIDI();
-        } else {
-          delay(6);
-          DrainMIDI();
-          delay(6);
-          DrainMIDI();
-        }
-      }
-      winkey_state=FREE;
-      break;
-    case WRPROM:
-      //
-      // Load EEPROM command. Write our
-      // "own" magic byte to addr 0.
-      // Nothing must interrupt us, hence no state machine
-      // no delay is required upon reading, but check for
-      // incoming MIDI messages after each byte received.
-      //
-      for (inum=0; inum<256; inum++) {
-        while (!ByteAvailable()) ;
-        byte=FromHost();
-        if (inum == 0) {
-          EEPROM.update(0, MAGIC);
-        } else {
-          EEPROM.update(inum, byte);
-        }
-        DrainMIDI();
-      }
-      winkey_state=FREE;
-      break;
     default:
       // This is a multi-byte command handled below
       break;
@@ -2096,10 +2112,54 @@ void WinKey_state_machine() {
             winkey_state=FREE;  // not implemented
             break;
           case ADMIN_DUMPEEPROM:
-            winkey_state=RDPROM;
+            //
+            // dump EEPROM command. Report "standard" magic byte
+            // at address 0.
+            //
+            // Nothing must interrupt us, therefore no state machine
+            // at 1200 baud, each character has a mere transmission time
+            // of more than 8 msec, so do a pause of 12 msec after each
+            // character. Since a complete dump takes much time, check
+            // for incoming MIDI messages frequently (every 6 msec or so).
+            //
+
+            for (inum=0; inum<256; inum++) {
+              if (inum ==  0) {
+                ToHost(0xA5);  // report 0xA5 no matter which magic byte we are using here
+              } else {
+                ToHost(EEPROM.read(inum));
+              }
+              if (highbaud) {
+                delay(1);
+                DrainMIDI();
+              } else {
+                delay(6);
+                DrainMIDI();
+                delay(6);
+               DrainMIDI();
+              }
+            }
+            winkey_state=FREE;
             break;
           case ADMIN_LOADEEPROM:
-            winkey_state=WRPROM;
+            //
+            // Load EEPROM command. Write our
+            // "own" magic byte to addr 0.
+            // Nothing must interrupt us, hence no state machine
+            // no delay is required upon reading, but check for
+            // incoming MIDI messages after each byte received.
+            //
+            for (inum=0; inum<256; inum++) {
+              while (!ByteAvailable()) ;
+              byte=FromHost();
+              if (inum == 0) {
+                EEPROM.update(0, MAGIC);
+              } else {
+                EEPROM.update(inum, byte);
+              }
+              DrainMIDI();
+            }
+            winkey_state=FREE;
             break;
           case ADMIN_SENDMSG:
             winkey_state=MESSAGE;
@@ -2116,6 +2176,7 @@ void WinKey_state_machine() {
             if (highbaud) {
 #ifdef MYSERIAL
               MYSERIAL.end();
+              delay(500);
               MYSERIAL.begin(1200);
 #endif
               highbaud=0;
@@ -2125,6 +2186,7 @@ void WinKey_state_machine() {
             if (!highbaud) {
 #ifdef MYSERIAL
               MYSERIAL.end();
+              delay(500);
               MYSERIAL.begin(9600);
 #endif
               highbaud=1;
@@ -2416,6 +2478,7 @@ void WinKey_state_machine() {
     OldSpeedPot=SpeedPot;
   }
 
+
 }
 
 #ifdef POWERSAVE
@@ -2490,8 +2553,6 @@ void goto_sleep() {
 // Most of the time, there will be nothing to do.
 //
 //////////////////////////////////////////////////////////////////////////////
-
-extern int usb_wait_rx_flag, usb_wait_tx_flag;
 
 void loop() {
   int i;
@@ -2594,6 +2655,7 @@ void loop() {
     }
   }
 #endif
+
 
 #ifdef BUTTONPIN
 //
@@ -2815,7 +2877,7 @@ if (actual >= button_debounce) {
          myfreq=4000/(Sidetone & 0x0F);
          old_sidetone = Sidetone;
 #ifdef TEENSY4AUDIO
-         sidetone.set_frequency(myfreq);
+         sidetone->set_frequency(myfreq);
 #endif
 #ifdef CWKEYERSHIELD
          if (myfreq <= 1270) {
@@ -2830,13 +2892,18 @@ if (actual >= button_debounce) {
 #ifdef CWKEYERSHIELD
           cwshield.sidetoneenable(old_sidetone_enabled);
 #endif
+#ifdef TEENSY4AUDIO
+          sidetone->enable(old_sidetone_enabled);
+#endif
        }
       break;
     case 4:
       //
       // One heart-beat of WinKey state machine
       //
+#ifdef MYSERIAL
       WinKey_state_machine();
+#endif
       break;
     case 6:
       //
